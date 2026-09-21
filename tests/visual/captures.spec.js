@@ -30,7 +30,9 @@ function shooter(page, theme) {
 for (const theme of ['light', 'dark']) {
   test(`captures avec données — ${theme}`, async ({ page }) => {
     const shot = shooter(page, theme);
-    await open(page, sampleData({ theme }));
+    // Période du cahier des charges, vue au 5e jour : la moyenne s'affiche
+    // (elle ne porte que sur les 4 journées terminées).
+    await open(page, sampleData({ theme }), { time: new Date('2026-09-25T09:00:00+02:00') });
 
     await shot('accueil');
 

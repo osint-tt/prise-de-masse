@@ -18,8 +18,8 @@ export async function text(locator) {
  * Prépare la page : horloge fixée, données éventuelles en place, puis navigation.
  * `data` à null = premier lancement (stockage vide).
  */
-export async function open(page, data = null, { hash = '#/' } = {}) {
-  await page.clock.setFixedTime(FIXED_TIME);
+export async function open(page, data = null, { hash = '#/', time = FIXED_TIME } = {}) {
+  await page.clock.setFixedTime(time);
   await page.addInitScript(
     ({ key, payload }) => {
       // Uniquement au premier chargement de l'onglet : les rechargements et les

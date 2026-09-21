@@ -10,7 +10,7 @@ l'extérieur. Elle fonctionne hors connexion une fois ouverte la première fois.
 
 Les aliments se saisissent pour 100 g, ou **à l'unité** (un œuf, une banane) en cochant
 « Aliment à l'unité » à la création. L'accueil affiche la moyenne par jour depuis le début
-de la période, sur les jours écoulés.
+de la période, sur les journées terminées — le jour en cours n'est pas compté.
 
 ## Installer sur le téléphone
 

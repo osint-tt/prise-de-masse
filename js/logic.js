@@ -1,7 +1,7 @@
 // logic.js — logique pure : calculs, dates, parsing, validation.
 // Aucun accès au DOM ni au stockage : ce fichier est importable par Node pour les tests.
 
-export const APP_VERSION = '1.1.0';
+export const APP_VERSION = '1.1.1';
 
 export const SCHEMA_VERSION = 2;
 
@@ -343,18 +343,21 @@ export function emptyDay() {
 }
 
 /**
- * Moyenne par jour depuis le début de la période, sur les jours écoulés.
- * Au jour 5, c'est la moyenne des 5 premiers jours — les journées vides comptent
- * pour 0, sinon la moyenne ne voudrait rien dire.
- * @returns {{days:number, kcal:number, prot:number}|null} null avant le début.
+ * Moyenne par jour sur les journées terminées de la période.
+ * Le jour en cours n'entre pas dans le calcul : au jour 4, c'est la moyenne des
+ * 3 premiers jours. Les journées vides comptent pour 0, sinon la moyenne ne
+ * voudrait rien dire.
+ * @returns {{days:number, kcal:number, prot:number}|null} null avant le début et
+ *   le premier jour, où aucune journée n'est encore terminée.
  */
 export function periodAverage(days, startKey, endKey, today) {
   const total = periodLength(startKey, endKey);
   if (total === 0 || !isDateKey(today)) return null;
   if (today < startKey) return null;
 
-  const elapsed = today > endKey ? total : dayNumber(today, startKey, endKey);
-  if (!elapsed) return null;
+  // Après la période, toutes les journées sont terminées.
+  const elapsed = today > endKey ? total : dayNumber(today, startKey, endKey) - 1;
+  if (!elapsed || elapsed < 1) return null;
 
   let kcal = 0;
   let prot = 0;

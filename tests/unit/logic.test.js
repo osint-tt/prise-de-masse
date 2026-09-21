@@ -528,27 +528,40 @@ function daysOf(n) {
   return days;
 }
 
-test('moyenne : au jour 5, on divise par 5 ; au jour 28, par 28', () => {
-  const a = L.periodAverage(daysOf(5), S, E, '2026-09-25'); // 25/09 = jour 5
-  assert.equal(a.days, 5);
+test('moyenne : au jour 4 on divise par 3, au jour 28 par 27', () => {
+  // Le jour en cours ne compte pas : seules les journées terminées entrent dedans.
+  const a = L.periodAverage(daysOf(4), S, E, '2026-09-24'); // 24/09 = jour 4
+  assert.equal(a.days, 3);
   assert.equal(a.kcal, 1000);
   assert.equal(a.prot, 50);
 
   const b = L.periodAverage(daysOf(28), S, E, '2026-10-18'); // 18/10 = jour 28
-  assert.equal(b.days, 28);
+  assert.equal(b.days, 27);
   assert.equal(b.kcal, 1000);
 });
 
+test('moyenne : ce qui est saisi aujourd’hui ne la change pas', () => {
+  // 3 journées terminées remplies, plus une grosse journée en cours.
+  const days = daysOf(3);
+  days['2026-09-24'] = { ...L.emptyDay(), midi: [{ kcal100: 9000, prot100: 900, grams: 100 }] };
+  const a = L.periodAverage(days, S, E, '2026-09-24');
+  assert.equal(a.days, 3);
+  assert.equal(a.kcal, 1000, 'la journée en cours est exclue');
+});
+
 test('moyenne : les journées vides comptent pour 0', () => {
-  // 2 journées remplies sur 4 jours écoulés.
-  const a = L.periodAverage(daysOf(2), S, E, '2026-09-24');
+  // 2 journées remplies sur 4 journées terminées (jour 5 en cours).
+  const a = L.periodAverage(daysOf(2), S, E, '2026-09-25');
   assert.equal(a.days, 4);
   assert.equal(a.kcal, 500);
   assert.equal(a.prot, 25);
 });
 
-test('moyenne : le premier jour, c’est la journée elle-même', () => {
-  const a = L.periodAverage(daysOf(1), S, E, S);
+test('moyenne : pas de moyenne le premier jour', () => {
+  // Aucune journée n'est encore terminée.
+  assert.equal(L.periodAverage(daysOf(1), S, E, S), null);
+  // Dès le deuxième jour, elle porte sur la première journée.
+  const a = L.periodAverage(daysOf(1), S, E, '2026-09-22');
   assert.equal(a.days, 1);
   assert.equal(a.kcal, 1000);
 });
@@ -556,13 +569,13 @@ test('moyenne : le premier jour, c’est la journée elle-même', () => {
 test('moyenne : les jours à venir ne comptent pas', () => {
   // 10 journées saisies, mais on n'est qu'au jour 3.
   const a = L.periodAverage(daysOf(10), S, E, '2026-09-23');
-  assert.equal(a.days, 3);
+  assert.equal(a.days, 2);
   assert.equal(a.kcal, 1000);
 });
 
 test('moyenne : hors période', () => {
   assert.equal(L.periodAverage(daysOf(3), S, E, '2026-09-20'), null, 'avant le début');
-  // Après la fin, la moyenne porte sur toute la période.
+  // Après la fin, toutes les journées sont terminées : la période entière compte.
   const apres = L.periodAverage(daysOf(31), S, E, '2026-11-15');
   assert.equal(apres.days, 31);
   assert.equal(apres.kcal, 1000);
@@ -571,7 +584,7 @@ test('moyenne : hors période', () => {
 
 test('moyenne : base vide', () => {
   const a = L.periodAverage({}, S, E, '2026-09-25');
-  assert.equal(a.days, 5);
+  assert.equal(a.days, 4);
   assert.equal(a.kcal, 0);
   assert.equal(a.prot, 0);
 });
