@@ -1,0 +1,20 @@
+{
+  "name": "prise-de-masse",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "PWA de suivi des calories et des protéines pendant une prise de masse. Outils de developpement uniquement : l'app elle-meme n'a aucune dependance.",
+  "scripts": {
+    "start": "node tools/serve.js",
+    "test": "npm run test:unit && npm run test:e2e",
+    "test:unit": "node --test \"tests/unit/*.test.js\"",
+    "test:e2e": "playwright test tests/e2e",
+    "icons": "node tools/gen-icons.js",
+    "shots": "playwright test tests/visual --project=chromium",
+    "qr": "node tools/qr.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "qrcode-terminal": "^0.12.0"
+  }
+}
