@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { test, expect } from '@playwright/test';
 import { open, text, storedData, createFood, addEntry, STORAGE_KEY } from './helpers.js';
 import { sampleData } from '../fixtures/sample-data.js';
+import { APP_VERSION } from '../../js/logic.js';
 
 const bg = (page) => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
 const resolved = (page) => page.evaluate(() => document.documentElement.dataset.resolved);
@@ -100,7 +101,7 @@ test.describe('Paramètres', () => {
 
   test('la version de l’app est affichée en bas des paramètres', async ({ page }) => {
     await open(page, sampleData(), { hash: '#/parametres' });
-    await expect(page.locator('.version-line')).toContainText('version 1.0.0');
+    await expect(page.locator('.version-line')).toContainText(`version ${APP_VERSION}`);
   });
 });
 
@@ -187,6 +188,33 @@ test.describe('Export / import', () => {
   });
 });
 
+test.describe('Mise à jour', () => {
+  test('le bandeau de mise à jour pousse l’app vers le bas sans bloquer l’en-tête', async ({ page }) => {
+    await open(page, sampleData());
+    const headerTop = (await page.locator('.app-header').boundingBox()).y;
+
+    await page.evaluate(() => {
+      document.getElementById('update-root').innerHTML =
+        '<div class="update-banner"><span class="u-msg">Mise à jour disponible</span>' +
+        '<button class="u-action" type="button" data-reload>Recharger</button></div>';
+    });
+    await expect(page.locator('.update-banner')).toBeVisible();
+
+    // L'en-tête descend au lieu d'être recouvert.
+    expect((await page.locator('.app-header').boundingBox()).y).toBeGreaterThan(headerTop);
+
+    // Et ses boutons restent utilisables.
+    await page.click('[aria-label="Paramètres"]', { timeout: 5000 });
+    await expect(page).toHaveURL(/#\/parametres$/);
+
+    // Toujours aucun débordement horizontal.
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
+});
+
 test.describe('Autonomie', () => {
   test('aucune requête vers un autre domaine', async ({ page, baseURL }) => {
     const foreign = [];
@@ -227,7 +255,7 @@ test.describe('Autonomie', () => {
       const cache = await caches.open(name);
       return { name, paths: (await cache.keys()).map((r) => new URL(r.url).pathname) };
     });
-    expect(cached.name).toBe('prise-de-masse-v1.0.0');
+    expect(cached.name).toBe(`prise-de-masse-v${APP_VERSION}`);
     for (const path of [
       '/index.html',
       '/css/style.css',

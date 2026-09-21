@@ -80,6 +80,16 @@ body {
   -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
   overflow: hidden;
+  /* Colonne : le bandeau de mise à jour pousse l'app vers le bas au lieu de la recouvrir. */
+  height: 100vh;
+  height: 100dvh;
+  padding-top: var(--safe-t);
+  display: flex;
+  flex-direction: column;
+}
+
+#update-root {
+  flex: none;
 }
 
 h1,
@@ -147,8 +157,8 @@ select {
 .app {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  height: 100dvh;
+  flex: 1;
+  min-height: 0;
   padding-left: var(--safe-l);
   padding-right: var(--safe-r);
 }
@@ -164,7 +174,7 @@ select {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: calc(var(--safe-t) + 14px) var(--pad) 12px;
+  padding: 14px var(--pad) 12px;
   flex: none;
 }
 
@@ -1300,11 +1310,7 @@ input[type='date'].input {
 }
 
 .update-banner {
-  position: fixed;
-  left: calc(var(--safe-l) + 14px);
-  right: calc(var(--safe-r) + 14px);
-  top: calc(var(--safe-t) + 12px);
-  z-index: 70;
+  margin: 10px calc(var(--safe-r) + 14px) 0 calc(var(--safe-l) + 14px);
   display: flex;
   align-items: center;
   gap: 12px;
