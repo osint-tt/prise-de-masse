@@ -602,7 +602,7 @@ export function chartScale(maxValue, goal = null, steps = 3) {
   }
   const rough = target / steps;
   const mag = Math.pow(10, Math.floor(Math.log10(rough)));
-  const candidates = [1, 2, 2.5, 5, 10];
+  const candidates = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
   let step = mag * 10;
   for (const c of candidates) {
     if (mag * c >= rough) {

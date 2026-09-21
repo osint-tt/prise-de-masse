@@ -217,7 +217,7 @@ test.describe('Base d’aliments', () => {
     // Aucun résultat : le bouton propose de créer l'aliment tapé.
     await page.fill('.sheet #picker-search', 'Skyr');
     await expect(page.locator('.sheet .food-row')).toHaveCount(0);
-    await expect(page.locator('.sheet [data-new-food]')).toHaveText('Créer « Skyr »');
+    expect(norm(await page.locator('.sheet [data-new-food]').textContent())).toBe('Créer « Skyr »');
     await page.click('.sheet [data-new-food]');
     await expect(page.locator('.sheet #f-name')).toHaveValue('Skyr');
     await page.fill('.sheet #f-kcal', '63');

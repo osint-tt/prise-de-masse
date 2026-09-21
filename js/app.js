@@ -161,6 +161,13 @@ function render() {
   if (route.name === 'home') drawChart();
   if (route.name === 'foods') wireFoodsScreen();
   if (route.name === 'settings') wireSettingsScreen();
+
+  // Les messages temporaires doivent rester au-dessus du total fixé en bas.
+  const totalBar = $('.day-total');
+  document.documentElement.style.setProperty(
+    '--toast-bottom',
+    totalBar ? `${totalBar.offsetHeight + 12}px` : ''
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -374,7 +381,7 @@ function viewDay(key) {
       .map(
         (e) => `<li><button class="entry" data-action="edit-entry" data-meal="${esc(meal.key)}" data-entry="${esc(e.id)}">
             <span class="entry-name"><span class="n">${esc(e.name)}</span><span class="q num">${esc(L.formatGrams(e.grams))}</span></span>
-            <span class="entry-values"><span class="k">${esc(L.formatKcal(L.entryKcal(e)))}</span><br><span class="p">${esc(L.formatProt(L.entryProt(e)))}</span></span>
+            <span class="entry-values"><span class="k">${esc(L.formatKcal(L.entryKcal(e)))}</span><span class="p">${esc(L.formatProt(L.entryProt(e)))}</span></span>
           </button></li>`
       )
       .join('');
@@ -390,7 +397,7 @@ function viewDay(key) {
   }).join('');
 
   return `<div class="screen">
-    <header class="app-header">
+    <header class="app-header day-header">
       <button class="icon-btn back-btn" data-action="back-home" aria-label="Retour à l’accueil">${ICONS.back}</button>
       <div class="titles">
         <h1>${esc(L.formatLongDate(key))}</h1>
@@ -582,7 +589,7 @@ function foodsListHtml() {
   }
   const list = L.sortFoodsAlpha(L.searchFoods(state.foods, foodsQuery));
   if (list.length === 0) {
-    return `<p class="empty-state">Aucun aliment ne correspond à « ${esc(foodsQuery)} ».</p>`;
+    return `<p class="empty-state">Aucun aliment ne correspond à « ${esc(foodsQuery)} ».</p>`;
   }
   return list
     .map(
@@ -814,7 +821,7 @@ function numToInput(v) {
 
 function confirmDeleteFood(food) {
   setSheetContent('Supprimer l’aliment', `
-    <p class="sheet-note">Supprimer « ${esc(food.name)} » de ta base d’aliments ? Les jours déjà remplis ne changent pas.</p>
+    <p class="sheet-note">Supprimer « ${esc(food.name)} » de ta base d’aliments ? Les jours déjà remplis ne changent pas.</p>
     <button class="btn primary" data-confirm type="button">Supprimer</button>
     <div class="btn-row"><button class="btn ghost" data-cancel type="button">Annuler</button></div>
   `, {
@@ -842,11 +849,17 @@ function openAddEntrySheet(dateKey, mealKey) {
 
 function showFoodPicker(dateKey, mealKey, query) {
   const meal = L.MEALS.find((m) => m.key === mealKey);
+  // Pas de champ de recherche tant que la base est vide.
+  const hasFoods = state.foods.length > 0;
   const html = `
-    <div class="search-wrap">
-      <span class="search-icon">${ICONS.search}</span>
-      <input class="input" type="search" id="picker-search" placeholder="Rechercher un aliment" autocomplete="off" value="${esc(query)}" aria-label="Rechercher un aliment">
-    </div>
+    ${
+      hasFoods
+        ? `<div class="search-wrap">
+            <span class="search-icon">${ICONS.search}</span>
+            <input class="input" type="search" id="picker-search" placeholder="Rechercher un aliment" autocomplete="off" value="${esc(query)}" aria-label="Rechercher un aliment">
+          </div>`
+        : ''
+    }
     <div class="picker-list" data-picker-list></div>
     <button class="btn ghost" data-new-food type="button"></button>
   `;
@@ -859,10 +872,10 @@ function showFoodPicker(dateKey, mealKey, query) {
       const counts = L.foodUsageCounts(state.days);
 
       const paint = () => {
-        const q = search.value;
+        const q = search ? search.value : '';
         const found = L.sortFoodsByUsage(L.searchFoods(state.foods, q), counts);
         if (state.foods.length === 0) {
-          list.innerHTML = `<p class="empty-state">Aucun aliment pour l’instant — appuie sur + pour en ajouter.</p>`;
+          list.innerHTML = `<p class="empty-state">Aucun aliment pour l’instant.</p>`;
         } else if (found.length === 0) {
           list.innerHTML = `<p class="empty-state">Aucun aliment ne correspond.</p>`;
         } else {
@@ -879,20 +892,20 @@ function showFoodPicker(dateKey, mealKey, query) {
             .join('');
         }
         const q2 = q.trim();
-        newBtn.textContent = found.length === 0 && q2 ? `Créer « ${q2} »` : 'Nouvel aliment';
+        newBtn.textContent = found.length === 0 && q2 ? `Créer « ${q2} »` : 'Nouvel aliment';
         newBtn.dataset.prefill = found.length === 0 && q2 ? q2 : '';
       };
 
-      search.addEventListener('input', paint);
+      if (search) search.addEventListener('input', paint);
       list.addEventListener('click', (e) => {
         const btn = e.target.closest('[data-pick]');
         if (!btn) return;
         const food = state.foods.find((f) => f.id === btn.dataset.pick);
-        if (food) showQuantityStep(dateKey, mealKey, food, search.value);
+        if (food) showQuantityStep(dateKey, mealKey, food, search ? search.value : '');
       });
       newBtn.addEventListener('click', () => {
         const prefill = newBtn.dataset.prefill || '';
-        const back = search.value;
+        const back = search ? search.value : '';
         renderFoodForm({
           title: 'Nouvel aliment',
           food: { name: prefill, kcal100: '', prot100: '' },
