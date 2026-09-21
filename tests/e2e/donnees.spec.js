@@ -349,7 +349,21 @@ test.describe('Autonomie', () => {
       const sheetOverflow = await page.evaluate(
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth
       );
-      expect(sheetOverflow, `feuille @ ${width}px`).toBeLessThanOrEqual(0);
+      expect(sheetOverflow, `feuille d’ajout @ ${width}px`).toBeLessThanOrEqual(0);
+      // La fermeture repasse par l'historique : attendre avant de naviguer.
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('.sheet', { state: 'detached' });
+
+      // Y compris celle du nouvel aliment, avec sa case à cocher.
+      await page.goto('/#/');
+      await page.click('.fab');
+      await page.waitForSelector('.sheet .check-row');
+      const foodSheetOverflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+      );
+      expect(foodSheetOverflow, `feuille aliment @ ${width}px`).toBeLessThanOrEqual(0);
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('.sheet', { state: 'detached' });
     }
   });
 

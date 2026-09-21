@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
-import { open, text, createFood, addEntry } from './helpers.js';
+import { open, text, createFood, addEntry, norm } from './helpers.js';
 import { sampleData } from '../fixtures/sample-data.js';
+import * as L from '../../js/logic.js';
 
 test.describe('Navigation', () => {
   test('les flèches jour précédent / suivant sont bornées à la période', async ({ page }) => {
@@ -113,6 +114,50 @@ test.describe('Navigation', () => {
     await expect(page.locator('.fab')).toHaveCount(0);
     await page.goto('/#/parametres');
     await expect(page.locator('.fab')).toHaveCount(0);
+  });
+
+  test('la moyenne porte sur les jours écoulés de la période', async ({ page }) => {
+    const data = sampleData();
+    data.settings.startDate = '2026-09-17'; // aujourd'hui (21/09) devient le jour 5
+    await open(page, data);
+
+    const avg = page.locator('.average-card');
+    await expect(avg).toBeVisible();
+    // Le CSS met le libellé en capitales : on compare sans la casse.
+    expect(await text(avg.locator('.avg-label'))).toMatch(/^Moyenne · 5 jours$/i);
+
+    // 4 journées vides, puis celle d'aujourd'hui : la moyenne vaut son cinquième.
+    const jour = L.dayTotals(data.days['2026-09-21']);
+    expect(await text(avg.locator('.k'))).toBe(norm(L.formatKcal(jour.kcal / 5)));
+    expect(await text(avg.locator('.p'))).toBe(L.formatProt(jour.prot / 5));
+  });
+
+  test('au premier jour, la moyenne est le total du jour', async ({ page }) => {
+    await open(page, sampleData()); // 21/09 = jour 1
+    expect(await text(page.locator('.average-card .avg-label'))).toMatch(/^Moyenne · 1 jour$/i);
+    const jour = L.dayTotals(sampleData().days['2026-09-21']);
+    expect(await text(page.locator('.average-card .k'))).toBe(norm(L.formatKcal(jour.kcal)));
+  });
+
+  test('la moyenne se met à jour quand on saisit', async ({ page }) => {
+    const data = sampleData({ days: 0 });
+    data.settings.startDate = '2026-09-20'; // aujourd'hui = jour 2
+    await open(page, data);
+    expect(await text(page.locator('.average-card .k'))).toBe('0 kcal');
+
+    await page.goto('/#/jour/2026-09-21');
+    await addEntry(page, 'soir', 'Pâtes', '200'); // 700 kcal
+    await page.click('[data-action="back-home"]');
+    // 700 kcal sur 2 jours écoulés.
+    expect(await text(page.locator('.average-card .k'))).toBe('350 kcal');
+  });
+
+  test('la moyenne disparaît avant le début de la période', async ({ page }) => {
+    const data = sampleData();
+    data.settings.startDate = '2026-10-01';
+    data.settings.endDate = '2026-10-21';
+    await open(page, data);
+    await expect(page.locator('.average-card')).toHaveCount(0);
   });
 
   test('hors période, la carte le signale', async ({ page }) => {

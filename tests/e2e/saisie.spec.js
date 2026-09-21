@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { open, text, createFood, addEntry, storedData, norm } from './helpers.js';
+import { sampleData } from '../fixtures/sample-data.js';
+import * as L from '../../js/logic.js';
 
 test.describe('Saisie', () => {
   test('créer un aliment, l’ajouter au repas du soir, et retrouver le calcul partout', async ({ page }) => {
@@ -198,6 +200,104 @@ test.describe('Saisie', () => {
 
     await page.goto('/#/jour/2026-09-21');
     expect(await text(page.locator('section.meal[data-meal="soir"] .entry'))).toContain('1 050 kcal');
+  });
+});
+
+test.describe('Aliments à l’unité', () => {
+  test('la case à cocher fait passer un aliment en unités, pas en grammes', async ({ page }) => {
+    await open(page);
+    await page.click('.fab');
+
+    // Par défaut, tout est en grammes.
+    await expect(page.locator('.sheet [data-hint]')).toContainText('pour 100 g');
+    expect(await text(page.locator('.sheet label[for="f-kcal"]'))).toBe('Calories / 100 g');
+
+    await page.fill('#f-name', 'Œuf');
+    await page.click('.sheet .check-row');
+    expect(await page.locator('.sheet #f-unit').isChecked()).toBe(true);
+    await expect(page.locator('.sheet [data-hint]')).toContainText('une unité');
+    expect(await text(page.locator('.sheet label[for="f-kcal"]'))).toBe('Calories / unité');
+    expect(await text(page.locator('.sheet label[for="f-prot"]'))).toBe('Protéines / unité');
+
+    await page.fill('#f-kcal', '72');
+    await page.fill('#f-prot', '6,3');
+    await page.click('.sheet [data-submit]');
+    await page.waitForSelector('.sheet', { state: 'detached' });
+
+    await page.goto('/#/jour/2026-09-21');
+    await page.click('section.meal[data-meal="petitdej"] .add-btn');
+    expect(await text(page.locator('.sheet .food-row'))).toContain('72 kcal · 6,3 g / unité');
+
+    await page.click('.sheet .food-row');
+    await expect(page.locator('.sheet .qty-input-wrap .unit')).toHaveText('u.');
+    expect(await text(page.locator('.sheet label[for="q-grams"]'))).toBe('Nombre d’unités');
+    await page.fill('.sheet #q-grams', '2');
+    expect(await text(page.locator('.sheet [data-preview]'))).toBe(
+      '2 unités → 144 kcal · 12,6 g de protéines'
+    );
+    await page.click('.sheet [data-submit]');
+    await page.waitForSelector('.sheet', { state: 'detached' });
+
+    const entry = page.locator('section.meal[data-meal="petitdej"] .entry');
+    expect(await text(entry)).toContain('2 unités');
+    expect(await text(entry)).toContain('144 kcal');
+    expect(await text(entry)).toContain('12,6 g');
+    expect(await text(page.locator('.day-total .values'))).toContain('144 kcal');
+
+    // L'unité est enregistrée avec l'entrée et avec l'aliment.
+    const data = await storedData(page);
+    expect(data.version).toBe(2);
+    expect(data.foods[0].unit).toBe('piece');
+    expect(data.days['2026-09-21'].petitdej[0].unit).toBe('piece');
+    expect(data.days['2026-09-21'].petitdej[0].grams).toBe(2);
+
+    // La case reste cochée quand on rouvre l'aliment.
+    await page.goto('/#/aliments');
+    await page.click('.food-row:has-text("Œuf")');
+    expect(await page.locator('.sheet #f-unit').isChecked()).toBe(true);
+  });
+
+  test('une seule unité s’écrit au singulier, et un demi est accepté', async ({ page }) => {
+    await open(page);
+    await page.click('.fab');
+    await page.fill('#f-name', 'Banane');
+    await page.click('.sheet .check-row');
+    await page.fill('#f-kcal', '105');
+    await page.fill('#f-prot', '1,3');
+    await page.click('.sheet [data-submit]');
+    await page.waitForSelector('.sheet', { state: 'detached' });
+
+    await page.goto('/#/jour/2026-09-21');
+    await page.click('section.meal[data-meal="gouter"] .add-btn');
+    await page.click('.sheet .food-row');
+    await page.fill('.sheet #q-grams', '0,5');
+    expect(await text(page.locator('.sheet [data-preview]'))).toBe(
+      '0,5 unité → 53 kcal · 0,7 g de protéines'
+    );
+    await page.fill('.sheet #q-grams', '1');
+    expect(await text(page.locator('.sheet [data-preview]'))).toContain('1 unité →');
+
+    // Au-delà de 100 unités, c'est refusé.
+    await page.fill('.sheet #q-grams', '101');
+    await expect(page.locator('.sheet [data-error="grams"]')).toContainText('unités maximum');
+    await expect(page.locator('.sheet [data-submit]')).toBeDisabled();
+  });
+
+  test('grammes et unités cohabitent dans la même journée', async ({ page }) => {
+    await open(page, sampleData(), { hash: '#/jour/2026-09-21' });
+
+    // Le jeu de données contient des œufs à l'unité et des pâtes au gramme.
+    const petitdej = await text(page.locator('section.meal[data-meal="petitdej"] .entry').first());
+    expect(petitdej).toContain('Œuf');
+    expect(petitdej).toMatch(/\d unités?/);
+
+    const soir = await text(page.locator('section.meal[data-meal="soir"] .entry').first());
+    expect(soir).toContain('Pâtes');
+    expect(soir).toContain(' g');
+
+    // Le total du jour additionne bien les deux.
+    const totals = L.dayTotals(sampleData().days['2026-09-21']);
+    expect(await text(page.locator('.day-total .values'))).toContain(norm(L.formatKcal(totals.kcal)));
   });
 });
 

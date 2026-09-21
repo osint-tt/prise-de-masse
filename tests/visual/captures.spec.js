@@ -40,6 +40,12 @@ for (const theme of ['light', 'dark']) {
     // Feuille « Nouvel aliment » depuis le bouton +
     await page.click('.fab');
     await shot('feuille-nouvel-aliment', 400);
+    await page.click('.sheet .check-row');
+    await page.fill('#f-name', 'Œuf');
+    await page.fill('#f-kcal', '72');
+    await page.fill('#f-prot', '6,3');
+    await shot('feuille-nouvel-aliment-unite');
+    await page.click('.sheet .check-row');
     await page.fill('#f-name', 'Pâtes');
     await page.fill('#f-kcal', '9999');
     await shot('feuille-nouvel-aliment-erreur');

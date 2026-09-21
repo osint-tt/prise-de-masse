@@ -219,11 +219,26 @@ function viewHome() {
     </header>
     <main class="home-main" data-scroll>
       ${viewTodayCard()}
+      ${viewAverage()}
       ${viewCalendar()}
       ${viewChartShell()}
     </main>
     <button class="fab" data-action="new-food" aria-label="Nouvel aliment">${ICONS.plus}</button>
   </div>`;
+}
+
+/** Moyenne par jour depuis le début de la période, sur les jours écoulés. */
+function viewAverage() {
+  const s = settings();
+  const avg = L.periodAverage(state.days, s.startDate, s.endDate, today);
+  if (!avg) return '';
+  return `<section class="average-card" aria-label="Moyenne par jour depuis le début de la période">
+      <span class="avg-label">Moyenne · ${esc(L.formatInt(avg.days))} jour${avg.days > 1 ? 's' : ''}</span>
+      <span class="avg-values">
+        <span class="k num">${esc(L.formatKcal(avg.kcal))}</span>
+        <span class="p num">${esc(L.formatProt(avg.prot))}</span>
+      </span>
+    </section>`;
 }
 
 function viewTodayCard() {
@@ -305,7 +320,7 @@ function drawChart() {
   }
 
   const width = Math.max(holder.clientWidth || 340, 240);
-  const height = 150;
+  const height = 126;
   const padL = 36;
   const padR = 6;
   const padT = 10;
@@ -380,7 +395,7 @@ function viewDay(key) {
     const rows = entries
       .map(
         (e) => `<li><button class="entry" data-action="edit-entry" data-meal="${esc(meal.key)}" data-entry="${esc(e.id)}">
-            <span class="entry-name"><span class="n">${esc(e.name)}</span><span class="q num">${esc(L.formatGrams(e.grams))}</span></span>
+            <span class="entry-name"><span class="n">${esc(e.name)}</span><span class="q num">${esc(L.formatQuantity(e.grams, e.unit))}</span></span>
             <span class="entry-values"><span class="k">${esc(L.formatKcal(L.entryKcal(e)))}</span><span class="p">${esc(L.formatProt(L.entryProt(e)))}</span></span>
           </button></li>`
       )
@@ -596,7 +611,7 @@ function foodsListHtml() {
       (f) => `<button class="food-row" data-action="edit-food" data-food="${esc(f.id)}">
         <span class="rl-main">
           <span class="f-name">${esc(f.name)}</span>
-          <span class="f-sub">${esc(L.formatKcal(f.kcal100))} · ${esc(L.formatGrams(f.prot100))} / 100 g</span>
+          <span class="f-sub">${esc(L.formatKcal(f.kcal100))} · ${esc(L.formatGrams(f.prot100))} ${esc(L.perLabel(f.unit))}</span>
         </span>
         <span class="chev">${ICONS.chevron}</span>
       </button>`
@@ -677,12 +692,13 @@ function openNewFoodSheet({ prefillName = '', onCreated = null } = {}) {
   openSheet('Nouvel aliment');
   renderFoodForm({
     title: 'Nouvel aliment',
-    food: { name: prefillName, kcal100: '', prot100: '' },
+    food: { name: prefillName, unit: 'g', kcal100: '', prot100: '' },
     submitLabel: 'Enregistrer',
     onSubmit: (value) => {
       const food = {
         id: L.newId(),
         name: value.name,
+        unit: value.unit,
         kcal100: value.kcal100,
         prot100: value.prot100,
         createdAt: new Date().toISOString(),
@@ -714,6 +730,7 @@ function openEditFoodSheet(foodId) {
     onDelete: () => confirmDeleteFood(food),
     onSubmit: (value) => {
       food.name = value.name;
+      food.unit = value.unit;
       food.kcal100 = value.kcal100;
       food.prot100 = value.prot100;
       persist();
@@ -732,19 +749,27 @@ function renderFoodForm({ title, food, submitLabel, onSubmit, onDelete = null, n
       <input class="input" type="text" id="f-name" maxlength="${L.LIMITS.nameMax}" autocomplete="off" value="${esc(food.name || '')}" placeholder="Pâtes">
       <p class="field-error" data-error="name" hidden></p>
     </div>
+    <label class="check-row" for="f-unit">
+      <span class="check-text">
+        <span class="check-title">Aliment à l’unité</span>
+        <span class="check-sub">Un œuf, une banane… au lieu de grammes</span>
+      </span>
+      <input type="checkbox" id="f-unit" ${L.normalizeUnit(food.unit) === 'piece' ? 'checked' : ''}>
+      <span class="check-box">${ICONS.check}</span>
+    </label>
     <div class="two-cols">
       <div class="field">
-        <label for="f-kcal">Calories / 100 g</label>
+        <label for="f-kcal">Calories <span data-per>/ 100 g</span></label>
         <input class="input num" type="text" inputmode="decimal" id="f-kcal" autocomplete="off" value="${esc(numToInput(food.kcal100))}" placeholder="350">
         <p class="field-error" data-error="kcal100" hidden></p>
       </div>
       <div class="field">
-        <label for="f-prot">Protéines / 100 g</label>
+        <label for="f-prot">Protéines <span data-per>/ 100 g</span></label>
         <input class="input num" type="text" inputmode="decimal" id="f-prot" autocomplete="off" value="${esc(numToInput(food.prot100))}" placeholder="12">
         <p class="field-error" data-error="prot100" hidden></p>
       </div>
     </div>
-    <p class="hint">Valeurs indiquées sur l’emballage, pour 100 g.</p>
+    <p class="hint" data-hint>Valeurs indiquées sur l’emballage, pour 100 g.</p>
     <button class="btn primary" data-submit type="button">${esc(submitLabel)}</button>
     ${onDelete ? `<div class="btn-row"><button class="btn ghost" data-delete type="button">${ICONS.trash}Supprimer</button></div>` : ''}
   `;
@@ -752,10 +777,27 @@ function renderFoodForm({ title, food, submitLabel, onSubmit, onDelete = null, n
   setSheetContent(title, html, {
     mount: (body) => {
       const name = $('#f-name', body);
+      const unitBox = $('#f-unit', body);
       const kcal = $('#f-kcal', body);
       const prot = $('#f-prot', body);
       const submit = $('[data-submit]', body);
       const touched = { name: false, kcal100: false, prot100: false };
+
+      const currentUnit = () => (unitBox.checked ? 'piece' : 'g');
+
+      // Les libellés suivent la case : « / 100 g » ou « / unité ».
+      const syncUnitLabels = () => {
+        const per = L.perLabel(currentUnit());
+        $$('[data-per]', body).forEach((el) => {
+          el.textContent = per;
+        });
+        $('[data-hint]', body).textContent =
+          currentUnit() === 'piece'
+            ? 'Valeurs pour une unité (un œuf, une banane…).'
+            : 'Valeurs indiquées sur l’emballage, pour 100 g.';
+        kcal.placeholder = currentUnit() === 'piece' ? '72' : '350';
+        prot.placeholder = currentUnit() === 'piece' ? '6,3' : '12';
+      };
 
       const showError = (field, message) => {
         const el = body.querySelector(`[data-error="${field}"]`);
@@ -772,7 +814,7 @@ function renderFoodForm({ title, food, submitLabel, onSubmit, onDelete = null, n
 
       const check = () => {
         const res = L.validateFood(
-          { name: name.value, kcal100: kcal.value, prot100: prot.value },
+          { name: name.value, unit: currentUnit(), kcal100: kcal.value, prot100: prot.value },
           state.foods,
           excludeId
         );
@@ -782,6 +824,11 @@ function renderFoodForm({ title, food, submitLabel, onSubmit, onDelete = null, n
         submit.disabled = !res.ok;
         return res;
       };
+
+      unitBox.addEventListener('change', () => {
+        syncUnitLabels();
+        check();
+      });
 
       // Les erreurs apparaissent à la frappe et à la validation, jamais au simple
       // passage dans le champ : sinon la feuille change de hauteur sous le doigt.
@@ -807,8 +854,13 @@ function renderFoodForm({ title, food, submitLabel, onSubmit, onDelete = null, n
       submit.addEventListener('click', submitNow);
       if (onDelete) $('[data-delete]', body).addEventListener('click', onDelete);
 
+      syncUnitLabels();
       check();
-      submit.disabled = !L.validateFood({ name: name.value, kcal100: kcal.value, prot100: prot.value }, state.foods, excludeId).ok;
+      submit.disabled = !L.validateFood(
+        { name: name.value, unit: currentUnit(), kcal100: kcal.value, prot100: prot.value },
+        state.foods,
+        excludeId
+      ).ok;
       if (!food.name) name.focus();
     },
   });
@@ -884,7 +936,7 @@ function showFoodPicker(dateKey, mealKey, query) {
               (f) => `<button class="food-row" data-pick="${esc(f.id)}" type="button">
                 <span class="rl-main">
                   <span class="f-name">${esc(f.name)}</span>
-                  <span class="f-sub">${esc(L.formatKcal(f.kcal100))} · ${esc(L.formatGrams(f.prot100))} / 100 g</span>
+                  <span class="f-sub">${esc(L.formatKcal(f.kcal100))} · ${esc(L.formatGrams(f.prot100))} ${esc(L.perLabel(f.unit))}</span>
                 </span>
                 <span class="chev">${ICONS.chevron}</span>
               </button>`
@@ -908,12 +960,13 @@ function showFoodPicker(dateKey, mealKey, query) {
         const back = search ? search.value : '';
         renderFoodForm({
           title: 'Nouvel aliment',
-          food: { name: prefill, kcal100: '', prot100: '' },
+          food: { name: prefill, unit: 'g', kcal100: '', prot100: '' },
           submitLabel: 'Enregistrer',
           onSubmit: (value) => {
             const food = {
               id: L.newId(),
               name: value.name,
+              unit: value.unit,
               kcal100: value.kcal100,
               prot100: value.prot100,
               createdAt: new Date().toISOString(),
@@ -933,12 +986,13 @@ function showFoodPicker(dateKey, mealKey, query) {
 }
 
 function showQuantityStep(dateKey, mealKey, food, backQuery) {
+  const unit = L.normalizeUnit(food.unit);
   const html = `
     <div class="field">
-      <label for="q-grams">Quantité en grammes</label>
+      <label for="q-grams">${unit === 'piece' ? 'Nombre d’unités' : 'Quantité en grammes'}</label>
       <div class="qty-input-wrap">
         <input class="input num" type="text" inputmode="decimal" id="q-grams" autocomplete="off" placeholder="0" value="">
-        <span class="unit">g</span>
+        <span class="unit">${esc(L.unitLabel(unit))}</span>
       </div>
       <p class="field-error" data-error="grams" hidden></p>
     </div>
@@ -955,7 +1009,7 @@ function showQuantityStep(dateKey, mealKey, food, backQuery) {
       const submit = $('[data-submit]', body);
 
       const check = () => {
-        const res = L.validateGrams(input.value);
+        const res = L.validateQuantity(input.value, unit);
         if (!res.ok) {
           preview.innerHTML = '—';
           submit.disabled = true;
@@ -972,9 +1026,10 @@ function showQuantityStep(dateKey, mealKey, food, backQuery) {
         err.hidden = true;
         input.classList.remove('invalid');
         submit.disabled = false;
-        const kcal = (food.kcal100 * res.value) / 100;
-        const prot = (food.prot100 * res.value) / 100;
-        preview.innerHTML = `${esc(L.formatGrams(res.value))} → <strong>${esc(L.formatKcal(kcal))}</strong> · <strong>${esc(L.formatProt(prot))}</strong> de protéines`;
+        const ref = L.refQuantity(unit);
+        const kcal = (food.kcal100 * res.value) / ref;
+        const prot = (food.prot100 * res.value) / ref;
+        preview.innerHTML = `${esc(L.formatQuantity(res.value, unit))} → <strong>${esc(L.formatKcal(kcal))}</strong> · <strong>${esc(L.formatProt(prot))}</strong> de protéines`;
         return res.value;
       };
 
@@ -986,6 +1041,7 @@ function showQuantityStep(dateKey, mealKey, food, backQuery) {
           id: L.newId(),
           foodId: food.id,
           name: food.name,
+          unit,
           grams,
           kcal100: food.kcal100,
           prot100: food.prot100,
@@ -1019,14 +1075,15 @@ function openEditEntrySheet(dateKey, mealKey, entryId) {
   const entry = (day[mealKey] || []).find((e) => e.id === entryId);
   if (!entry) return;
 
+  const unit = L.normalizeUnit(entry.unit);
   openSheet('Modifier');
   const html = `
-    <p class="sheet-note">${esc(entry.name)} — ${esc(L.formatKcal(entry.kcal100))} · ${esc(L.formatGrams(entry.prot100))} / 100 g</p>
+    <p class="sheet-note">${esc(entry.name)} — ${esc(L.formatKcal(entry.kcal100))} · ${esc(L.formatGrams(entry.prot100))} ${esc(L.perLabel(unit))}</p>
     <div class="field">
-      <label for="q-grams">Quantité en grammes</label>
+      <label for="q-grams">${unit === 'piece' ? 'Nombre d’unités' : 'Quantité en grammes'}</label>
       <div class="qty-input-wrap">
         <input class="input num" type="text" inputmode="decimal" id="q-grams" autocomplete="off" value="${esc(numToInput(entry.grams))}">
-        <span class="unit">g</span>
+        <span class="unit">${esc(L.unitLabel(unit))}</span>
       </div>
       <p class="field-error" data-error="grams" hidden></p>
     </div>
@@ -1043,7 +1100,7 @@ function openEditEntrySheet(dateKey, mealKey, entryId) {
       const submit = $('[data-submit]', body);
 
       const check = () => {
-        const res = L.validateGrams(input.value);
+        const res = L.validateQuantity(input.value, unit);
         if (!res.ok) {
           preview.innerHTML = '—';
           submit.disabled = true;
@@ -1055,9 +1112,10 @@ function openEditEntrySheet(dateKey, mealKey, entryId) {
         err.hidden = true;
         input.classList.remove('invalid');
         submit.disabled = false;
-        const kcal = (entry.kcal100 * res.value) / 100;
-        const prot = (entry.prot100 * res.value) / 100;
-        preview.innerHTML = `${esc(L.formatGrams(res.value))} → <strong>${esc(L.formatKcal(kcal))}</strong> · <strong>${esc(L.formatProt(prot))}</strong> de protéines`;
+        const ref = L.refQuantity(unit);
+        const kcal = (entry.kcal100 * res.value) / ref;
+        const prot = (entry.prot100 * res.value) / ref;
+        preview.innerHTML = `${esc(L.formatQuantity(res.value, unit))} → <strong>${esc(L.formatKcal(kcal))}</strong> · <strong>${esc(L.formatProt(prot))}</strong> de protéines`;
         return res.value;
       };
 

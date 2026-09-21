@@ -1,9 +1,9 @@
 // logic.js — logique pure : calculs, dates, parsing, validation.
 // Aucun accès au DOM ni au stockage : ce fichier est importable par Node pour les tests.
 
-export const APP_VERSION = '1.0.2';
+export const APP_VERSION = '1.1.0';
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const DEFAULT_START = '2026-09-21';
 export const DEFAULT_END = '2026-10-21';
@@ -20,12 +20,45 @@ export const MEAL_KEYS = MEALS.map((m) => m.key);
 
 export const THEMES = ['auto', 'light', 'dark'];
 
+/**
+ * Unité de mesure d'un aliment.
+ * - 'g'     : valeurs pour 100 g (cas courant), quantité saisie en grammes.
+ * - 'piece' : valeurs pour 1 unité (un œuf, une banane…), quantité saisie en unités.
+ * Les champs `kcal100` / `prot100` gardent leur nom dans les deux cas : ils portent
+ * les valeurs pour la quantité de référence, donnée par refQuantity().
+ */
+export const UNITS = ['g', 'piece'];
+
 export const LIMITS = {
   nameMax: 40,
   kcalMax: 900,
   protMax: 100,
   gramsMax: 5000,
+  kcalUnitMax: 2000,
+  protUnitMax: 200,
+  piecesMax: 100,
 };
+
+/** Quantité à laquelle se rapportent kcal100 / prot100 : 100 g, ou 1 unité. */
+export function refQuantity(unit) {
+  return unit === 'piece' ? 1 : 100;
+}
+
+export function normalizeUnit(unit) {
+  return unit === 'piece' ? 'piece' : 'g';
+}
+
+/** Bornes de saisie des valeurs de référence, selon l'unité. */
+export function valueLimits(unit) {
+  return unit === 'piece'
+    ? { kcal: LIMITS.kcalUnitMax, prot: LIMITS.protUnitMax }
+    : { kcal: LIMITS.kcalMax, prot: LIMITS.protMax };
+}
+
+/** Borne haute de la quantité saisissable, selon l'unité. */
+export function quantityLimit(unit) {
+  return unit === 'piece' ? LIMITS.piecesMax : LIMITS.gramsMax;
+}
 
 /* ------------------------------------------------------------------ */
 /* Identifiants                                                        */
@@ -233,6 +266,23 @@ export function formatGrams(n) {
   return `${nfUpTo1.format(n || 0)} g`;
 }
 
+/** « 300 g », « 2 unités », « 1 unité » selon l'unité de l'aliment. */
+export function formatQuantity(n, unit) {
+  const value = n || 0;
+  if (normalizeUnit(unit) !== 'piece') return formatGrams(value);
+  return `${nfUpTo1.format(value)} ${value > 1 ? 'unités' : 'unité'}`;
+}
+
+/** Suffixe des valeurs de référence : « / 100 g » ou « / unité ». */
+export function perLabel(unit) {
+  return normalizeUnit(unit) === 'piece' ? '/ unité' : '/ 100 g';
+}
+
+/** Libellé de l'unité de saisie : « g » ou « u. ». */
+export function unitLabel(unit) {
+  return normalizeUnit(unit) === 'piece' ? 'u.' : 'g';
+}
+
 export function round1(n) {
   return Math.round((n + Number.EPSILON) * 10) / 10;
 }
@@ -241,14 +291,16 @@ export function round1(n) {
 /* Calculs                                                             */
 /* ------------------------------------------------------------------ */
 
+// `grams` porte la quantité saisie : des grammes, ou un nombre d'unités si
+// l'aliment se compte à l'unité. La division se fait par la quantité de référence.
 export function entryKcal(entry) {
   if (!entry) return 0;
-  return (Number(entry.kcal100) || 0) * (Number(entry.grams) || 0) / 100;
+  return ((Number(entry.kcal100) || 0) * (Number(entry.grams) || 0)) / refQuantity(entry.unit);
 }
 
 export function entryProt(entry) {
   if (!entry) return 0;
-  return (Number(entry.prot100) || 0) * (Number(entry.grams) || 0) / 100;
+  return ((Number(entry.prot100) || 0) * (Number(entry.grams) || 0)) / refQuantity(entry.unit);
 }
 
 /** Totaux bruts (non arrondis) d'une liste d'entrées. */
@@ -288,6 +340,30 @@ export function emptyDay() {
   const d = {};
   for (const k of MEAL_KEYS) d[k] = [];
   return d;
+}
+
+/**
+ * Moyenne par jour depuis le début de la période, sur les jours écoulés.
+ * Au jour 5, c'est la moyenne des 5 premiers jours — les journées vides comptent
+ * pour 0, sinon la moyenne ne voudrait rien dire.
+ * @returns {{days:number, kcal:number, prot:number}|null} null avant le début.
+ */
+export function periodAverage(days, startKey, endKey, today) {
+  const total = periodLength(startKey, endKey);
+  if (total === 0 || !isDateKey(today)) return null;
+  if (today < startKey) return null;
+
+  const elapsed = today > endKey ? total : dayNumber(today, startKey, endKey);
+  if (!elapsed) return null;
+
+  let kcal = 0;
+  let prot = 0;
+  for (let i = 0; i < elapsed; i++) {
+    const t = dayTotals(days ? days[addDays(startKey, i)] : null);
+    kcal += t.kcal;
+    prot += t.prot;
+  }
+  return { days: elapsed, kcal: kcal / elapsed, prot: prot / elapsed };
 }
 
 /** Série { key, kcal, prot } pour chaque jour de la période. */
@@ -379,31 +455,41 @@ export function validateFood(input, foods = [], excludeId = null) {
     if (exists) errors.name = 'Cet aliment existe déjà.';
   }
 
+  const unit = normalizeUnit(input && input.unit);
+  const max = valueLimits(unit);
+  const pour = unit === 'piece' ? 'par unité' : 'pour 100 g';
+
   const kcal100 = parseNumber(input && input.kcal100);
   if (kcal100 === null) {
-    errors.kcal100 = 'Indique les calories pour 100 g.';
-  } else if (kcal100 < 0 || kcal100 > LIMITS.kcalMax) {
-    errors.kcal100 = `Entre 0 et ${LIMITS.kcalMax} kcal.`;
+    errors.kcal100 = `Indique les calories ${pour}.`;
+  } else if (kcal100 < 0 || kcal100 > max.kcal) {
+    errors.kcal100 = `Entre 0 et ${formatInt(max.kcal)} kcal.`;
   }
 
   const prot100 = parseNumber(input && input.prot100);
   if (prot100 === null) {
-    errors.prot100 = 'Indique les protéines pour 100 g.';
-  } else if (prot100 < 0 || prot100 > LIMITS.protMax) {
-    errors.prot100 = `Entre 0 et ${LIMITS.protMax} g.`;
+    errors.prot100 = `Indique les protéines ${pour}.`;
+  } else if (prot100 < 0 || prot100 > max.prot) {
+    errors.prot100 = `Entre 0 et ${formatInt(max.prot)} g.`;
   }
 
   const ok = Object.keys(errors).length === 0;
-  return ok ? { ok, errors, value: { name, kcal100, prot100 } } : { ok, errors };
+  return ok ? { ok, errors, value: { name, unit, kcal100, prot100 } } : { ok, errors };
 }
 
-/** Quantité : > 0 et <= 5 000 g. */
-export function validateGrams(input) {
-  const grams = parseNumber(input);
-  if (grams === null) return { ok: false, error: 'Indique une quantité.' };
-  if (grams <= 0) return { ok: false, error: 'La quantité doit être supérieure à 0.' };
-  if (grams > LIMITS.gramsMax) return { ok: false, error: `${formatInt(LIMITS.gramsMax)} g maximum.` };
-  return { ok: true, value: grams };
+/** Quantité : > 0, et bornée selon l'unité (5 000 g, ou 100 unités). */
+export function validateQuantity(input, unit) {
+  const value = parseNumber(input);
+  if (value === null) return { ok: false, error: 'Indique une quantité.' };
+  if (value <= 0) return { ok: false, error: 'La quantité doit être supérieure à 0.' };
+  const max = quantityLimit(unit);
+  if (value > max) {
+    return {
+      ok: false,
+      error: `${formatInt(max)} ${normalizeUnit(unit) === 'piece' ? 'unités' : 'g'} maximum.`,
+    };
+  }
+  return { ok: true, value };
 }
 
 /** Objectif quotidien optionnel : vide -> null. */
@@ -460,18 +546,21 @@ function isPlainObject(v) {
 
 function cleanEntry(raw) {
   if (!isPlainObject(raw)) return null;
+  const unit = normalizeUnit(raw.unit);
+  const max = valueLimits(unit);
   const grams = parseNumber(raw.grams);
   const kcal100 = parseNumber(raw.kcal100);
   const prot100 = parseNumber(raw.prot100);
   const name = normalizeName(raw.name);
   if (!name || grams === null || kcal100 === null || prot100 === null) return null;
-  if (grams <= 0 || grams > LIMITS.gramsMax) return null;
-  if (kcal100 < 0 || kcal100 > LIMITS.kcalMax) return null;
-  if (prot100 < 0 || prot100 > LIMITS.protMax) return null;
+  if (grams <= 0 || grams > quantityLimit(unit)) return null;
+  if (kcal100 < 0 || kcal100 > max.kcal) return null;
+  if (prot100 < 0 || prot100 > max.prot) return null;
   return {
     id: typeof raw.id === 'string' && raw.id ? raw.id : newId(),
     foodId: typeof raw.foodId === 'string' ? raw.foodId : null,
     name: name.slice(0, LIMITS.nameMax),
+    unit,
     grams,
     kcal100,
     prot100,
@@ -481,15 +570,18 @@ function cleanEntry(raw) {
 
 function cleanFood(raw) {
   if (!isPlainObject(raw)) return null;
+  const unit = normalizeUnit(raw.unit);
+  const max = valueLimits(unit);
   const name = normalizeName(raw.name);
   const kcal100 = parseNumber(raw.kcal100);
   const prot100 = parseNumber(raw.prot100);
   if (!name || kcal100 === null || prot100 === null) return null;
-  if (kcal100 < 0 || kcal100 > LIMITS.kcalMax) return null;
-  if (prot100 < 0 || prot100 > LIMITS.protMax) return null;
+  if (kcal100 < 0 || kcal100 > max.kcal) return null;
+  if (prot100 < 0 || prot100 > max.prot) return null;
   return {
     id: typeof raw.id === 'string' && raw.id ? raw.id : newId(),
     name: name.slice(0, LIMITS.nameMax),
+    unit,
     kcal100,
     prot100,
     createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : new Date().toISOString(),
@@ -578,8 +670,12 @@ export function migrate(raw) {
   if (!isPlainObject(raw)) return null;
   let data = raw;
 
-  // Exemple de future migration :
-  // if (data.version === 1) { data = { ...data, version: 2, ... }; }
+  // v1 -> v2 : les aliments peuvent se compter à l'unité. Tout ce qui existait
+  // était en grammes ; `normalizeUnit` donne déjà 'g' par défaut, la migration se
+  // contente donc de marquer la version pour que le reste de la validation suive.
+  if (data.version === 1) {
+    data = { ...data, version: 2 };
+  }
 
   if (typeof data.version !== 'number' || data.version > SCHEMA_VERSION) return null;
 

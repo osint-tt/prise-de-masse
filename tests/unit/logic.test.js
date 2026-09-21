@@ -271,15 +271,89 @@ test('bornes des valeurs pour 100 g', () => {
   assert.equal(comma.value.prot100, 12.5);
 });
 
-test('quantité : strictement positive et 5 000 g maximum', () => {
-  assert.equal(L.validateGrams('300').value, 300);
-  assert.equal(L.validateGrams('12,5').value, 12.5);
-  assert.equal(L.validateGrams('5000').value, 5000);
-  assert.equal(L.validateGrams('0').ok, false);
-  assert.equal(L.validateGrams('-5').ok, false);
-  assert.equal(L.validateGrams('5001').ok, false);
-  assert.equal(L.validateGrams('').ok, false);
-  assert.equal(L.validateGrams('abc').ok, false);
+/* ------------------------------------------------------------------ */
+/* Aliments à l'unité                                                  */
+/* ------------------------------------------------------------------ */
+
+const oeuf = { unit: 'piece', kcal100: 72, prot100: 6.3 };
+
+test('un aliment à l’unité se multiplie par la quantité, pas par 100', () => {
+  assert.equal(L.refQuantity('piece'), 1);
+  assert.equal(L.refQuantity('g'), 100);
+  assert.equal(L.refQuantity(undefined), 100);
+
+  const deuxOeufs = { ...oeuf, grams: 2 };
+  assert.equal(L.entryKcal(deuxOeufs), 144);
+  assert.equal(L.round1(L.entryProt(deuxOeufs)), 12.6);
+
+  // Un demi-œuf reste possible.
+  assert.equal(L.entryKcal({ ...oeuf, grams: 0.5 }), 36);
+
+  // Sans unité, on reste sur les valeurs pour 100 g.
+  assert.equal(L.entryKcal({ kcal100: 350, grams: 300 }), 1050);
+});
+
+test('les deux unités se mélangent dans une même journée', () => {
+  const day = L.emptyDay();
+  day.petitdej.push({ ...oeuf, grams: 3, name: 'Œuf' }); // 216 kcal / 18,9 g
+  day.soir.push({ kcal100: 350, prot100: 12, grams: 200, name: 'Pâtes' }); // 700 kcal / 24 g
+  const total = L.dayTotals(day);
+  assert.equal(total.kcal, 916);
+  assert.equal(L.round1(total.prot), 42.9);
+});
+
+test('affichage des quantités selon l’unité', () => {
+  assert.equal(L.formatQuantity(300, 'g'), '300 g');
+  assert.equal(L.formatQuantity(2, 'piece'), '2 unités');
+  assert.equal(L.formatQuantity(1, 'piece'), '1 unité');
+  assert.equal(L.formatQuantity(0.5, 'piece'), '0,5 unité');
+  assert.equal(L.formatQuantity(300), '300 g');
+  assert.equal(L.perLabel('piece'), '/ unité');
+  assert.equal(L.perLabel('g'), '/ 100 g');
+  assert.equal(L.unitLabel('piece'), 'u.');
+  assert.equal(L.unitLabel('g'), 'g');
+});
+
+test('bornes de saisie élargies pour un aliment à l’unité', () => {
+  const v = (unit, kcal, prot) => L.validateFood({ name: 'Test', unit, kcal100: kcal, prot100: prot }, []);
+  // 950 kcal pour 100 g est impossible, mais pas pour une part entière.
+  assert.equal(v('g', '950', '10').ok, false);
+  assert.equal(v('piece', '950', '10').ok, true);
+  assert.equal(v('piece', '2000', '200').ok, true);
+  assert.equal(v('piece', '2001', '10').ok, false);
+  assert.equal(v('piece', '100', '201').ok, false);
+  assert.match(v('piece', '', '10').errors.kcal100, /par unité/);
+  assert.match(v('g', '', '10').errors.kcal100, /pour 100 g/);
+});
+
+test('l’unité est conservée par la validation d’un aliment', () => {
+  const res = L.validateFood({ name: 'Œuf', unit: 'piece', kcal100: '72', prot100: '6,3' }, []);
+  assert.equal(res.ok, true);
+  assert.deepEqual(res.value, { name: 'Œuf', unit: 'piece', kcal100: 72, prot100: 6.3 });
+  // Une unité inconnue retombe sur le gramme.
+  assert.equal(L.validateFood({ name: 'X', unit: 'litres', kcal100: '1', prot100: '1' }, []).value.unit, 'g');
+});
+
+test('quantité en grammes : strictement positive et 5 000 g maximum', () => {
+  assert.equal(L.validateQuantity('300', 'g').value, 300);
+  assert.equal(L.validateQuantity('12,5', 'g').value, 12.5);
+  assert.equal(L.validateQuantity('5000', 'g').value, 5000);
+  assert.equal(L.validateQuantity('0', 'g').ok, false);
+  assert.equal(L.validateQuantity('-5', 'g').ok, false);
+  assert.equal(L.validateQuantity('5001', 'g').ok, false);
+  assert.equal(L.validateQuantity('', 'g').ok, false);
+  assert.equal(L.validateQuantity('abc', 'g').ok, false);
+  // L'unité par défaut est le gramme.
+  assert.equal(L.validateQuantity('300').value, 300);
+});
+
+test('quantité en unités : strictement positive et 100 unités maximum', () => {
+  assert.equal(L.validateQuantity('2', 'piece').value, 2);
+  assert.equal(L.validateQuantity('0,5', 'piece').value, 0.5);
+  assert.equal(L.validateQuantity('100', 'piece').value, 100);
+  assert.equal(L.validateQuantity('101', 'piece').ok, false);
+  assert.equal(L.validateQuantity('0', 'piece').ok, false);
+  assert.match(L.validateQuantity('101', 'piece').error, /unités/);
 });
 
 test('objectifs : vides = null, sinon nombre positif', () => {
@@ -334,7 +408,7 @@ test('import d’un fichier valide : résumé correct, données normalisées', (
   const res = L.validateData(validFile());
   assert.equal(res.ok, true);
   assert.deepEqual(res.summary, { foods: 1, days: 1 });
-  assert.equal(res.data.version, 1);
+  assert.equal(res.data.version, 2);
   assert.equal(res.data.settings.theme, 'dark');
   assert.equal(res.data.settings.goalKcal, 3200);
   assert.equal(res.data.days['2026-09-21'].midi[0].grams, 300);
@@ -386,14 +460,36 @@ test('import : version inconnue (plus récente) refusée', () => {
   assert.equal(L.migrate(file), null);
 });
 
-test('migration : la version 1 passe telle quelle, les données illisibles donnent null', () => {
-  const migrated = L.migrate(validFile());
+test('migration v1 -> v2 : les anciennes sauvegardes passent au gramme', () => {
+  const file = validFile(); // écrit en version 1, sans champ « unit »
+  assert.equal(file.version, 1);
+  const migrated = L.migrate(file);
   assert.ok(migrated);
+  assert.equal(migrated.version, 2);
   assert.equal(migrated.version, L.SCHEMA_VERSION);
   assert.equal(migrated.foods.length, 1);
+  // Tout ce qui existait était en grammes : les calculs ne bougent pas.
+  assert.equal(migrated.foods[0].unit, 'g');
+  assert.equal(migrated.days['2026-09-21'].midi[0].unit, 'g');
+  assert.equal(L.entryKcal(migrated.days['2026-09-21'].midi[0]), 1050);
+
   assert.equal(L.migrate(null), null);
-  assert.equal(L.migrate({ version: 2, settings: {}, foods: [], days: {} }), null);
+  assert.equal(L.migrate({ version: 99, settings: {}, foods: [], days: {} }), null);
   assert.equal(L.migrate({ foods: [] }), null);
+});
+
+test('une sauvegarde en version 2 garde ses aliments à l’unité', () => {
+  const file = validFile();
+  file.version = 2;
+  file.foods.push({ id: 'o', name: 'Œuf', unit: 'piece', kcal100: 72, prot100: 6.3, createdAt: '2026-09-21T10:00:00.000Z' });
+  file.days['2026-09-21'].petitdej.push({
+    id: 'e2', foodId: 'o', name: 'Œuf', unit: 'piece', grams: 2,
+    kcal100: 72, prot100: 6.3, createdAt: '2026-09-21T08:00:00.000Z',
+  });
+  const migrated = L.migrate(file);
+  assert.ok(migrated);
+  assert.equal(migrated.foods[1].unit, 'piece');
+  assert.equal(L.entryKcal(migrated.days['2026-09-21'].petitdej[0]), 144);
 });
 
 test('migration : les sections manquantes sont recréées vides', () => {
@@ -405,7 +501,7 @@ test('migration : les sections manquantes sont recréées vides', () => {
 
 test('données par défaut : période du cahier des charges, base vide', () => {
   const d = L.defaultData();
-  assert.equal(d.version, 1);
+  assert.equal(d.version, 2);
   assert.equal(d.settings.theme, 'auto');
   assert.equal(d.settings.startDate, '2026-09-21');
   assert.equal(d.settings.endDate, '2026-10-21');
@@ -414,6 +510,70 @@ test('données par défaut : période du cahier des charges, base vide', () => {
   assert.deepEqual(d.foods, []);
   assert.deepEqual(d.days, {});
   assert.equal(L.validateData(d).ok, true);
+});
+
+/* ------------------------------------------------------------------ */
+/* Moyenne depuis le début de la période                               */
+/* ------------------------------------------------------------------ */
+
+const S = L.DEFAULT_START;
+const E = L.DEFAULT_END;
+
+/** n journées à 1 000 kcal / 50 g, à partir du 21/09. */
+function daysOf(n) {
+  const days = {};
+  for (let i = 0; i < n; i++) {
+    days[L.addDays(S, i)] = { ...L.emptyDay(), midi: [{ kcal100: 1000, prot100: 50, grams: 100 }] };
+  }
+  return days;
+}
+
+test('moyenne : au jour 5, on divise par 5 ; au jour 28, par 28', () => {
+  const a = L.periodAverage(daysOf(5), S, E, '2026-09-25'); // 25/09 = jour 5
+  assert.equal(a.days, 5);
+  assert.equal(a.kcal, 1000);
+  assert.equal(a.prot, 50);
+
+  const b = L.periodAverage(daysOf(28), S, E, '2026-10-18'); // 18/10 = jour 28
+  assert.equal(b.days, 28);
+  assert.equal(b.kcal, 1000);
+});
+
+test('moyenne : les journées vides comptent pour 0', () => {
+  // 2 journées remplies sur 4 jours écoulés.
+  const a = L.periodAverage(daysOf(2), S, E, '2026-09-24');
+  assert.equal(a.days, 4);
+  assert.equal(a.kcal, 500);
+  assert.equal(a.prot, 25);
+});
+
+test('moyenne : le premier jour, c’est la journée elle-même', () => {
+  const a = L.periodAverage(daysOf(1), S, E, S);
+  assert.equal(a.days, 1);
+  assert.equal(a.kcal, 1000);
+});
+
+test('moyenne : les jours à venir ne comptent pas', () => {
+  // 10 journées saisies, mais on n'est qu'au jour 3.
+  const a = L.periodAverage(daysOf(10), S, E, '2026-09-23');
+  assert.equal(a.days, 3);
+  assert.equal(a.kcal, 1000);
+});
+
+test('moyenne : hors période', () => {
+  assert.equal(L.periodAverage(daysOf(3), S, E, '2026-09-20'), null, 'avant le début');
+  // Après la fin, la moyenne porte sur toute la période.
+  const apres = L.periodAverage(daysOf(31), S, E, '2026-11-15');
+  assert.equal(apres.days, 31);
+  assert.equal(apres.kcal, 1000);
+  assert.equal(L.periodAverage({}, S, E, 'pas-une-date'), null);
+});
+
+test('moyenne : base vide', () => {
+  const a = L.periodAverage({}, S, E, '2026-09-25');
+  assert.equal(a.days, 5);
+  assert.equal(a.kcal, 0);
+  assert.equal(a.prot, 0);
 });
 
 /* ------------------------------------------------------------------ */
