@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { test, expect } from '@playwright/test';
 import { open, text, storedData, createFood, addEntry, STORAGE_KEY } from './helpers.js';
 import { sampleData } from '../fixtures/sample-data.js';
@@ -189,6 +190,37 @@ test.describe('Export / import', () => {
 });
 
 test.describe('Mise à jour', () => {
+  test('un fichier modifié sur le serveur fait apparaître le bandeau', async ({ page }) => {
+    const cssPath = fileURLToPath(new URL('../../css/style.css', import.meta.url));
+    const original = fs.readFileSync(cssPath);
+    try {
+      await open(page, sampleData());
+      await page.evaluate(() => navigator.serviceWorker.ready);
+      await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller), {
+        timeout: 10_000,
+      }).toBe(true);
+      await expect(page.locator('.update-banner')).toHaveCount(0);
+
+      // Nouvelle version publiée pendant que l'app est installée.
+      fs.writeFileSync(cssPath, `${original.toString('utf8')}\n/* version suivante */\n`, 'utf8');
+
+      await page.reload();
+      await page.waitForSelector('[data-ready="true"]', { state: 'attached' });
+
+      // Le service worker sert le cache, revalide en fond, et signale le changement.
+      await expect(page.locator('.update-banner')).toBeVisible({ timeout: 15_000 });
+      await expect(page.locator('.update-banner')).toContainText('Mise à jour disponible');
+
+      // Recharger redonne une app fonctionnelle, avec les mêmes données.
+      await page.click('.update-banner [data-reload]');
+      await page.waitForSelector('[data-ready="true"]', { state: 'attached' });
+      expect(await text(page.locator('.today-card'))).toContain('Lundi 21 septembre');
+      expect((await storedData(page)).foods).toHaveLength(6);
+    } finally {
+      fs.writeFileSync(cssPath, original);
+    }
+  });
+
   test('le bandeau de mise à jour pousse l’app vers le bas sans bloquer l’en-tête', async ({ page }) => {
     await open(page, sampleData());
     const headerTop = (await page.locator('.app-header').boundingBox()).y;

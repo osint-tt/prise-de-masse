@@ -1320,39 +1320,65 @@ if (darkQuery && darkQuery.addEventListener) {
 /* Service worker                                                      */
 /* ------------------------------------------------------------------ */
 
-function showUpdateBanner(worker) {
+const MAJ_CACHE = 'prise-de-masse-maj';
+const MAJ_MARQUEUR = './maj';
+
+function showUpdateBanner() {
   const root = document.getElementById('update-root');
   if (root.firstChild) return;
   root.innerHTML = `<div class="update-banner">
       <span class="u-msg">Mise à jour disponible</span>
       <button class="u-action" type="button" data-reload>Recharger</button>
     </div>`;
-  $('[data-reload]', root).addEventListener('click', () => {
-    worker.postMessage({ type: 'SKIP_WAITING' });
+  // Les fichiers à jour sont déjà dans le cache : un simple rechargement suffit.
+  // Les données, elles, ne sont jamais touchées.
+  $('[data-reload]', root).addEventListener('click', async () => {
+    try {
+      const cache = await caches.open(MAJ_CACHE);
+      await cache.delete(MAJ_MARQUEUR);
+    } catch {
+      /* sans importance : au pire le bandeau réapparaît une fois */
+    }
+    location.reload();
   });
+}
+
+/** Le worker a pu signaler la mise à jour avant que la page ne soit prête à l'entendre. */
+async function verifierMiseAJourEnAttente() {
+  try {
+    if (!('caches' in window)) return;
+    const cache = await caches.open(MAJ_CACHE);
+    if (await cache.match(MAJ_MARQUEUR)) showUpdateBanner();
+  } catch {
+    /* contexte non sécurisé : pas de cache, donc pas de mise à jour à signaler */
+  }
 }
 
 function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
-  // Une premiere installation declenche aussi controllerchange (clients.claim) :
-  // on ne recharge que si la page etait deja controlee par un worker.
-  const hadController = !!navigator.serviceWorker.controller;
-  let reloading = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (!hadController || reloading) return;
-    reloading = true;
-    location.reload();
+
+  // Le worker prévient quand un fichier de l'app a réellement changé sur le serveur.
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'CONTENT_UPDATED') showUpdateBanner();
   });
+
+  verifierMiseAJourEnAttente();
 
   navigator.serviceWorker
     .register(`./sw.js?v=${L.APP_VERSION}`, { scope: './' })
     .then((reg) => {
-      if (reg.waiting && navigator.serviceWorker.controller) showUpdateBanner(reg.waiting);
+      // Un worker en attente a déjà remis tous les fichiers en cache : on le laisse
+      // prendre la main sans rien demander. La page affichée ne change pas, et c'est
+      // le bandeau (déclenché par un vrai changement de contenu) qui propose de recharger.
+      const activerEnAttente = () => {
+        if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+      };
+      activerEnAttente();
       reg.addEventListener('updatefound', () => {
         const worker = reg.installing;
         if (!worker) return;
         worker.addEventListener('statechange', () => {
-          if (worker.state === 'installed' && navigator.serviceWorker.controller) showUpdateBanner(worker);
+          if (worker.state === 'installed') activerEnAttente();
         });
       });
     })
