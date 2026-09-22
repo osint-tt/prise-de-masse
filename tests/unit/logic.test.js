@@ -604,8 +604,10 @@ test('série du graphique : une valeur par jour de la période', () => {
 });
 
 test('plancher du graphique : toujours 2 000 kcal et 60 g', () => {
-  assert.equal(L.chartFloor('kcal'), 2000);
-  assert.equal(L.chartFloor('prot'), 60);
+  assert.equal(L.chartFloor('kcal'), L.CHART_FLOORS.kcal);
+  assert.equal(L.chartFloor('prot'), L.CHART_FLOORS.prot);
+  assert.equal(L.CHART_FLOORS.kcal, 2500, 'plancher calories');
+  assert.equal(L.CHART_FLOORS.prot, 60, 'plancher proteines');
   assert.equal(L.chartFloor('autre'), 0);
 });
 

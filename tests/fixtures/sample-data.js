@@ -61,10 +61,10 @@ export function filledDays(count = 10, startKey = '2026-09-21') {
 
     day.petitdej.push(entry(`${i}-a`, 'f-oeufs', rand() > 0.5 ? 3 : 2)); // en unités
     day.petitdej.push(entry(`${i}-b`, 'f-fromage', jitter(200, 80)));
-    day.midi.push(entry(`${i}-c`, 'f-riz', jitter(120, 60)));
+    day.midi.push(entry(`${i}-c`, 'f-riz', jitter(160, 60)));
     day.midi.push(entry(`${i}-d`, 'f-poulet', jitter(180, 60)));
     if (rand() > 0.3) day.gouter.push(entry(`${i}-e`, 'f-amandes', jitter(40, 30)));
-    day.soir.push(entry(`${i}-f`, 'f-pates', jitter(250, 120)));
+    day.soir.push(entry(`${i}-f`, 'f-pates', jitter(380, 120)));
     day.soir.push(entry(`${i}-g`, 'f-poulet', jitter(140, 60)));
     if (rand() > 0.6) day.grignotage.push(entry(`${i}-h`, 'f-fromage', jitter(120, 60)));
 

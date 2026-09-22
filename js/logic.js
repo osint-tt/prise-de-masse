@@ -1,7 +1,7 @@
 // logic.js — logique pure : calculs, dates, parsing, validation.
 // Aucun accès au DOM ni au stockage : ce fichier est importable par Node pour les tests.
 
-export const APP_VERSION = '1.2.2';
+export const APP_VERSION = '1.2.3';
 
 export const SCHEMA_VERSION = 2;
 
@@ -692,9 +692,9 @@ export function migrate(raw) {
 
 /**
  * Plancher de l'axe des ordonnées : en dessous, les journées se ressemblent toutes
- * et les écarts sont illisibles. Partir de 2 000 kcal / 60 g étale les barres.
+ * et les écarts sont illisibles. Partir de 2 500 kcal / 60 g étale les barres.
  */
-export const CHART_FLOORS = { kcal: 2000, prot: 60 };
+export const CHART_FLOORS = { kcal: 2500, prot: 60 };
 
 /**
  * Plancher de l'axe pour une valeur affichée. Il s'applique toujours, quelles que

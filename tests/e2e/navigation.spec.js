@@ -119,19 +119,19 @@ test.describe('Navigation', () => {
   test('le graphique démarre au plancher quand toutes les journées sont au-dessus', async ({ page }) => {
     await open(page, sampleData());
 
-    // Le jeu de données tient entre 2 000 et 3 200 kcal : l'axe part de 2 000.
+    // Le jeu de données tient entre le plancher et l'objectif : l'axe part du plancher.
     const graduations = async () =>
       (await page.locator('.chart-svg .tick-label').allTextContents()).map((t) =>
         Number(norm(t).replace(/\s/g, ''))
       );
     let ticks = await graduations();
-    expect(Math.min(...ticks)).toBe(2000);
+    expect(Math.min(...ticks)).toBe(L.CHART_FLOORS.kcal);
     expect(Math.max(...ticks)).toBeGreaterThanOrEqual(2400);
 
-    // Les protéines partent de 60.
+    // Les protéines partent de leur propre plancher.
     await page.click('[data-metric="prot"]');
     ticks = await graduations();
-    expect(Math.min(...ticks)).toBe(60);
+    expect(Math.min(...ticks)).toBe(L.CHART_FLOORS.prot);
   });
 
   test('la journée en cours, encore à moitié saisie, ne ramène pas l’axe à 0', async ({ page }) => {
@@ -158,7 +158,7 @@ test.describe('Navigation', () => {
     const ticks = (await page.locator('.chart-svg .tick-label').allTextContents()).map((t) =>
       Number(norm(t).replace(/\s/g, ''))
     );
-    expect(Math.min(...ticks)).toBe(2000);
+    expect(Math.min(...ticks)).toBe(L.CHART_FLOORS.kcal);
 
     // La barre du jour reste visible, rognée à la ligne du bas.
     const aujourdhui = page.locator('.chart-svg .bar.is-today');
@@ -192,7 +192,7 @@ test.describe('Navigation', () => {
     const ticks = (await page.locator('.chart-svg .tick-label').allTextContents()).map((t) =>
       Number(norm(t).replace(/\s/g, ''))
     );
-    expect(Math.min(...ticks)).toBe(2000);
+    expect(Math.min(...ticks)).toBe(L.CHART_FLOORS.kcal);
 
     // Toutes les barres sont là, et celle du 23 garde une amorce visible.
     await expect(page.locator('.chart-svg .bar')).toHaveCount(10);
