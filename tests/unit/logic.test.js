@@ -603,6 +603,44 @@ test('série du graphique : une valeur par jour de la période', () => {
   assert.equal(series[1].prot, 36);
 });
 
+test('plancher du graphique : 2 000 kcal et 60 g tant que tout est au-dessus', () => {
+  assert.equal(L.chartFloor([2100, 2250, 2400], 'kcal', 3200), 2000);
+  assert.equal(L.chartFloor([2000], 'kcal', 3200), 2000, 'pile sur le plancher, ça passe');
+  assert.equal(L.chartFloor([150, 162, 175], 'prot', 180), 60);
+
+  // Une seule journée en dessous, et l'axe doit repartir de 0 : sinon elle
+  // apparaîtrait à zéro alors qu'elle vaut 1 800 kcal.
+  assert.equal(L.chartFloor([1800, 2250, 2400], 'kcal', 3200), 0);
+  assert.equal(L.chartFloor([45, 162, 175], 'prot', 180), 0);
+
+  // Un objectif sous le plancher ne serait pas traçable.
+  assert.equal(L.chartFloor([2100, 2400], 'kcal', 1500), 0);
+
+  assert.equal(L.chartFloor([], 'kcal', 3200), 0);
+  assert.equal(L.chartFloor([2100], 'autre', 3200), 0);
+});
+
+test('échelle tronquée : l’axe part du plancher, les graduations suivent', () => {
+  const kcal = L.chartScale(2400, 3200, 3, 2000);
+  assert.equal(kcal.min, 2000);
+  assert.equal(kcal.max, 3200);
+  assert.deepEqual(kcal.ticks, [2400, 2800, 3200]);
+
+  const prot = L.chartScale(175, 180, 3, 60);
+  assert.equal(prot.min, 60);
+  assert.equal(prot.max, 180);
+  assert.deepEqual(prot.ticks, [100, 140, 180]);
+
+  // Sans plancher, rien ne change par rapport à avant.
+  const zero = L.chartScale(2850, 3200, 3, 0);
+  assert.equal(zero.min, 0);
+  assert.equal(zero.max, 3600);
+
+  // Un plancher au-dessus des valeurs est ignoré.
+  const trop = L.chartScale(1500, null, 3, 2000);
+  assert.equal(trop.min, 0);
+});
+
 test('échelle du graphique : graduations rondes qui englobent l’objectif', () => {
   const s1 = L.chartScale(2850, 3200, 3);
   assert.ok(s1.max >= 3200);

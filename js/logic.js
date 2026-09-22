@@ -1,7 +1,7 @@
 // logic.js — logique pure : calculs, dates, parsing, validation.
 // Aucun accès au DOM ni au stockage : ce fichier est importable par Node pour les tests.
 
-export const APP_VERSION = '1.1.1';
+export const APP_VERSION = '1.2.0';
 
 export const SCHEMA_VERSION = 2;
 
@@ -691,15 +691,45 @@ export function migrate(raw) {
 /* ------------------------------------------------------------------ */
 
 /**
- * Échelle « ronde » pour l'axe des ordonnées.
- * @returns {{max:number, ticks:number[]}} 3 graduations au-dessus de 0.
+ * Plancher de l'axe des ordonnées : en dessous, les journées se ressemblent toutes
+ * et les écarts sont illisibles. Partir de 2 000 kcal / 60 g étale les barres.
  */
-export function chartScale(maxValue, goal = null, steps = 3) {
-  const target = Math.max(maxValue || 0, goal || 0);
-  if (!(target > 0)) {
-    return { max: steps, ticks: Array.from({ length: steps }, (_, i) => i + 1) };
+export const CHART_FLOORS = { kcal: 2000, prot: 60 };
+
+/**
+ * Plancher réellement utilisable pour une série.
+ * Le graphique doit rester honnête : dès qu'une journée passe sous le plancher,
+ * ou que l'objectif est dessous, on repart de 0.
+ */
+export function chartFloor(values, metric, goal = null) {
+  const floor = CHART_FLOORS[metric];
+  if (!floor) return 0;
+  const list = (Array.isArray(values) ? values : []).filter((v) => Number.isFinite(v));
+  if (list.length === 0) return 0;
+  if (Math.min(...list) < floor) return 0;
+  if (goal && goal < floor) return 0;
+  return floor;
+}
+
+/**
+ * Échelle « ronde » pour l'axe des ordonnées.
+ * @param {number} floor valeur de départ de l'axe (0 = axe classique).
+ * @returns {{min:number, max:number, ticks:number[]}} `steps` graduations au-dessus de min.
+ */
+export function chartScale(maxValue, goal = null, steps = 3, floor = 0) {
+  const top = Math.max(maxValue || 0, goal || 0);
+  const min = floor > 0 && top > floor ? floor : 0;
+  const span = top - min;
+
+  if (!(span > 0)) {
+    return {
+      min,
+      max: min + steps,
+      ticks: Array.from({ length: steps }, (_, i) => round1(min + i + 1)),
+    };
   }
-  const rough = target / steps;
+
+  const rough = span / steps;
   const mag = Math.pow(10, Math.floor(Math.log10(rough)));
   const candidates = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
   let step = mag * 10;
@@ -709,10 +739,10 @@ export function chartScale(maxValue, goal = null, steps = 3) {
       break;
     }
   }
-  const max = step * steps;
+  const max = min + step * steps;
   const ticks = [];
-  for (let i = 1; i <= steps; i++) ticks.push(round1(step * i));
-  return { max, ticks };
+  for (let i = 1; i <= steps; i++) ticks.push(round1(min + step * i));
+  return { min, max, ticks };
 }
 
 /** Pourcentage de progression, borné à 100 pour la barre. */

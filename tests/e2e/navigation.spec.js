@@ -116,6 +116,53 @@ test.describe('Navigation', () => {
     await expect(page.locator('.fab')).toHaveCount(0);
   });
 
+  test('le graphique démarre au plancher quand toutes les journées sont au-dessus', async ({ page }) => {
+    await open(page, sampleData());
+
+    // Le jeu de données tient entre 2 000 et 3 200 kcal : l'axe part de 2 000.
+    const graduations = async () =>
+      (await page.locator('.chart-svg .tick-label').allTextContents()).map((t) =>
+        Number(norm(t).replace(/\s/g, ''))
+      );
+    let ticks = await graduations();
+    expect(Math.min(...ticks)).toBe(2000);
+    expect(Math.max(...ticks)).toBeGreaterThanOrEqual(2400);
+
+    // Les protéines partent de 60.
+    await page.click('[data-metric="prot"]');
+    ticks = await graduations();
+    expect(Math.min(...ticks)).toBe(60);
+  });
+
+  test('une journée sous le plancher fait repartir le graphique de 0', async ({ page }) => {
+    const data = sampleData();
+    // Une journée très légère : le plancher mentirait sur son niveau réel.
+    data.days['2026-09-23'] = {
+      ...L.emptyDay(),
+      midi: [
+        {
+          id: 'e-light',
+          foodId: 'f-pates',
+          name: 'Pâtes',
+          unit: 'g',
+          grams: 200,
+          kcal100: 350,
+          prot100: 12,
+          createdAt: '2026-09-21T08:00:00.000Z',
+        },
+      ],
+    };
+    await open(page, data);
+
+    const ticks = (await page.locator('.chart-svg .tick-label').allTextContents()).map((t) =>
+      Number(norm(t).replace(/\s/g, ''))
+    );
+    expect(Math.min(...ticks)).toBeLessThan(2000);
+
+    // La barre de cette journée reste visible et proportionnelle.
+    await expect(page.locator('.chart-svg .bar')).toHaveCount(10);
+  });
+
   test('la moyenne porte sur les journées terminées, sans le jour en cours', async ({ page }) => {
     const data = sampleData();
     data.settings.startDate = '2026-09-17'; // aujourd'hui (21/09) devient le jour 5

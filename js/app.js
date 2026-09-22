@@ -330,9 +330,13 @@ function drawChart() {
 
   const metric = chartMetric;
   const goal = metric === 'kcal' ? s.goalKcal : s.goalProt;
-  const max = Math.max(...filled.map((d) => d[metric]), 0);
-  const scale = L.chartScale(max, goal, 3);
-  const y = (v) => padT + plotH * (1 - v / scale.max);
+  const values = filled.map((d) => d[metric]);
+  const max = Math.max(...values, 0);
+  // L'axe démarre à 2 000 kcal / 60 g tant que toutes les journées sont au-dessus :
+  // les écarts d'un jour à l'autre deviennent lisibles. Sinon il repart de 0.
+  const scale = L.chartScale(max, goal, 3, L.chartFloor(values, metric, goal));
+  const span = scale.max - scale.min;
+  const y = (v) => padT + plotH * (1 - (v - scale.min) / span);
 
   const n = series.length;
   const colW = plotW / n;
@@ -340,24 +344,29 @@ function drawChart() {
 
   let g = '';
 
+  const tickLabel = (value, yy) =>
+    `<text class="tick-label" x="${padL - 7}" y="${(yy + 3.2).toFixed(1)}" text-anchor="end">${esc(
+      L.formatInt(value)
+    )}</text>`;
+
   for (const t of scale.ticks) {
     const yy = y(t);
     g += `<line class="grid" x1="${padL}" y1="${yy.toFixed(1)}" x2="${(width - padR).toFixed(1)}" y2="${yy.toFixed(1)}"/>`;
-    g += `<text class="tick-label" x="${padL - 7}" y="${(yy + 3.2).toFixed(1)}" text-anchor="end">${esc(
-      metric === 'kcal' ? L.formatInt(t) : L.formatInt(t)
-    )}</text>`;
+    g += tickLabel(t, yy);
   }
   g += `<line class="axis" x1="${padL}" y1="${padT + plotH}" x2="${(width - padR).toFixed(1)}" y2="${padT + plotH}"/>`;
+  // Axe tronqué : sa valeur de départ doit être écrite, sinon le graphique ment.
+  if (scale.min > 0) g += tickLabel(scale.min, padT + plotH);
 
-  if (goal && goal <= scale.max) {
+  if (goal && goal <= scale.max && goal >= scale.min) {
     const yy = y(goal);
     g += `<line class="goal-line" x1="${padL}" y1="${yy.toFixed(1)}" x2="${(width - padR).toFixed(1)}" y2="${yy.toFixed(1)}"/>`;
   }
 
   series.forEach((d, i) => {
     if (d.empty) return;
-    const v = Math.min(d[metric], scale.max);
-    const h = Math.max(1.5, plotH * (v / scale.max));
+    const v = Math.max(Math.min(d[metric], scale.max), scale.min);
+    const h = Math.max(1.5, plotH * ((v - scale.min) / span));
     const cx = padL + colW * (i + 0.5);
     const isToday = d.key === today;
     g += `<rect class="bar${isToday ? ' is-today' : ''}" x="${(cx - barW / 2).toFixed(1)}" y="${(padT + plotH - h).toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="1.5"/>`;

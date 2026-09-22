@@ -12,6 +12,10 @@ Les aliments se saisissent pour 100 g, ou **à l'unité** (un œuf, une banane) 
 « Aliment à l'unité » à la création. L'accueil affiche la moyenne par jour depuis le début
 de la période, sur les journées terminées — le jour en cours n'est pas compté.
 
+Le graphique démarre à 2 000 kcal / 60 g plutôt qu'à zéro, pour que les écarts entre journées
+restent lisibles (constantes `CHART_FLOORS` dans `js/logic.js`). Si une journée passe sous ce
+seuil, il repart automatiquement de 0.
+
 ## Installer sur le téléphone
 
 **iPhone (Safari)** — ouvrir l'URL dans Safari → bouton Partager → « Sur l'écran d'accueil ».
