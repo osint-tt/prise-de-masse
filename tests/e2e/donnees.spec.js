@@ -212,7 +212,22 @@ test.describe('Mise à jour', () => {
       await expect(page.locator('.update-banner')).toContainText('Mise à jour disponible');
 
       // Recharger redonne une app fonctionnelle, avec les mêmes données.
+      // Le bouton efface d'abord le marqueur de mise à jour, donc le rechargement
+      // part un instant plus tard : on attend que le document soit vraiment remplacé
+      // avant d'interroger la page.
+      await page.evaluate(() => {
+        window.__avantRechargement = true;
+      });
       await page.click('.update-banner [data-reload]');
+      await expect
+        .poll(
+          () =>
+            page
+              .evaluate(() => window.__avantRechargement === undefined)
+              .catch(() => true /* contexte détruit : le rechargement est en cours */),
+          { timeout: 15_000 }
+        )
+        .toBe(true);
       await page.waitForSelector('[data-ready="true"]', { state: 'attached' });
       expect(await text(page.locator('.today-card'))).toContain('Lundi 21 septembre');
       expect((await storedData(page)).foods).toHaveLength(6);

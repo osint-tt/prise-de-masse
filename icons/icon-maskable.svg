@@ -1,5 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Protal">
   <rect width="512" height="512" fill="#000000"/>
+  <!-- Version « maskable » : le lanceur du téléphone découpe les bords selon sa
+       propre forme (cercle, carré arrondi…). Un contour posé sur le bord serait
+       rogné, donc il est tracé en cercle juste à l'intérieur de la zone sûre
+       (80 % du canevas, soit un rayon de 204), où il survit à toutes les découpes. -->
+  <circle cx="256" cy="256" r="196" fill="none" stroke="#ffffff" stroke-width="11"/>
   <g fill="#ffffff" transform="translate(256 256) scale(0.72) translate(-256 -256)">
     <rect x="152" y="236" width="208" height="40" rx="10" ry="10"/>
     <rect x="112" y="181" width="44" height="150" rx="16" ry="16"/>
