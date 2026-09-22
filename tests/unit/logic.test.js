@@ -603,21 +603,10 @@ test('série du graphique : une valeur par jour de la période', () => {
   assert.equal(series[1].prot, 36);
 });
 
-test('plancher du graphique : 2 000 kcal et 60 g tant que tout est au-dessus', () => {
-  assert.equal(L.chartFloor([2100, 2250, 2400], 'kcal', 3200), 2000);
-  assert.equal(L.chartFloor([2000], 'kcal', 3200), 2000, 'pile sur le plancher, ça passe');
-  assert.equal(L.chartFloor([150, 162, 175], 'prot', 180), 60);
-
-  // Une seule journée en dessous, et l'axe doit repartir de 0 : sinon elle
-  // apparaîtrait à zéro alors qu'elle vaut 1 800 kcal.
-  assert.equal(L.chartFloor([1800, 2250, 2400], 'kcal', 3200), 0);
-  assert.equal(L.chartFloor([45, 162, 175], 'prot', 180), 0);
-
-  // Un objectif sous le plancher ne serait pas traçable.
-  assert.equal(L.chartFloor([2100, 2400], 'kcal', 1500), 0);
-
-  assert.equal(L.chartFloor([], 'kcal', 3200), 0);
-  assert.equal(L.chartFloor([2100], 'autre', 3200), 0);
+test('plancher du graphique : toujours 2 000 kcal et 60 g', () => {
+  assert.equal(L.chartFloor('kcal'), 2000);
+  assert.equal(L.chartFloor('prot'), 60);
+  assert.equal(L.chartFloor('autre'), 0);
 });
 
 test('échelle tronquée : l’axe part du plancher, les graduations suivent', () => {
@@ -635,10 +624,24 @@ test('échelle tronquée : l’axe part du plancher, les graduations suivent', (
   const zero = L.chartScale(2850, 3200, 3, 0);
   assert.equal(zero.min, 0);
   assert.equal(zero.max, 3600);
+});
 
-  // Un plancher au-dessus des valeurs est ignoré.
-  const trop = L.chartScale(1500, null, 3, 2000);
-  assert.equal(trop.min, 0);
+test('échelle : le plancher tient même quand toutes les journées sont en dessous', () => {
+  // Une journée à 500 kcal ne fait pas redescendre l'axe à 0 : c'est le réglage voulu.
+  const maigre = L.chartScale(500, null, 3, 2000);
+  assert.equal(maigre.min, 2000);
+  assert.ok(maigre.max > 2000, 'l’axe garde une hauteur exploitable');
+  assert.equal(maigre.ticks.length, 3);
+  assert.ok(maigre.ticks.every((t) => t > 2000));
+
+  // Avec un objectif, c'est lui qui fixe le haut.
+  const avecObjectif = L.chartScale(500, 3200, 3, 2000);
+  assert.equal(avecObjectif.min, 2000);
+  assert.equal(avecObjectif.max, 3200);
+
+  const prot = L.chartScale(20, null, 3, 60);
+  assert.equal(prot.min, 60);
+  assert.ok(prot.max > 60);
 });
 
 test('échelle du graphique : graduations rondes qui englobent l’objectif', () => {

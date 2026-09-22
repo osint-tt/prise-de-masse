@@ -134,9 +134,44 @@ test.describe('Navigation', () => {
     expect(Math.min(...ticks)).toBe(60);
   });
 
-  test('une journée sous le plancher fait repartir le graphique de 0', async ({ page }) => {
+  test('la journée en cours, encore à moitié saisie, ne ramène pas l’axe à 0', async ({ page }) => {
     const data = sampleData();
-    // Une journée très légère : le plancher mentirait sur son niveau réel.
+    // Aujourd'hui : un seul petit repas, bien sous le plancher.
+    data.days['2026-09-21'] = {
+      ...L.emptyDay(),
+      petitdej: [
+        {
+          id: 'e-matin',
+          foodId: 'f-pates',
+          name: 'Pâtes',
+          unit: 'g',
+          grams: 100,
+          kcal100: 350,
+          prot100: 12,
+          createdAt: '2026-09-21T08:00:00.000Z',
+        },
+      ],
+    };
+    await open(page, data);
+
+    // Les journées terminées sont toutes au-dessus : le plancher tient.
+    const ticks = (await page.locator('.chart-svg .tick-label').allTextContents()).map((t) =>
+      Number(norm(t).replace(/\s/g, ''))
+    );
+    expect(Math.min(...ticks)).toBe(2000);
+
+    // La barre du jour reste visible, rognée à la ligne du bas.
+    const aujourdhui = page.locator('.chart-svg .bar.is-today');
+    await expect(aujourdhui).toHaveCount(1);
+    expect(Number(await aujourdhui.getAttribute('height'))).toBeGreaterThanOrEqual(3);
+
+    // Et son vrai total reste lisible en gros sur la carte du jour.
+    expect(await text(page.locator('.today-card'))).toContain('350');
+  });
+
+  test('une journée légère ne fait pas redescendre l’axe à 0', async ({ page }) => {
+    const data = sampleData();
+    // Une journée à 700 kcal, très en dessous du plancher.
     data.days['2026-09-23'] = {
       ...L.emptyDay(),
       midi: [
@@ -157,10 +192,18 @@ test.describe('Navigation', () => {
     const ticks = (await page.locator('.chart-svg .tick-label').allTextContents()).map((t) =>
       Number(norm(t).replace(/\s/g, ''))
     );
-    expect(Math.min(...ticks)).toBeLessThan(2000);
+    expect(Math.min(...ticks)).toBe(2000);
 
-    // La barre de cette journée reste visible et proportionnelle.
+    // Toutes les barres sont là, et celle du 23 garde une amorce visible.
     await expect(page.locator('.chart-svg .bar')).toHaveCount(10);
+    const hauteurs = await page.locator('.chart-svg .bar').evaluateAll((els) =>
+      els.map((el) => Number(el.getAttribute('height')))
+    );
+    expect(Math.min(...hauteurs)).toBeGreaterThanOrEqual(3);
+
+    // Son vrai total reste accessible au tap.
+    await page.click('.chart-svg .hit[data-date="2026-09-23"]');
+    expect(await text(page.locator('.day-total .values'))).toContain('700 kcal');
   });
 
   test('la moyenne porte sur les journées terminées, sans le jour en cours', async ({ page }) => {

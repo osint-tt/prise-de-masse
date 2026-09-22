@@ -332,9 +332,9 @@ function drawChart() {
   const goal = metric === 'kcal' ? s.goalKcal : s.goalProt;
   const values = filled.map((d) => d[metric]);
   const max = Math.max(...values, 0);
-  // L'axe démarre à 2 000 kcal / 60 g tant que toutes les journées sont au-dessus :
-  // les écarts d'un jour à l'autre deviennent lisibles. Sinon il repart de 0.
-  const scale = L.chartScale(max, goal, 3, L.chartFloor(values, metric, goal));
+  // L'axe démarre toujours à 2 000 kcal / 60 g : c'est ce qui rend les écarts d'un
+  // jour à l'autre lisibles. Une journée en dessous garde une amorce sur la ligne du bas.
+  const scale = L.chartScale(max, goal, 3, L.chartFloor(metric));
   const span = scale.max - scale.min;
   const y = (v) => padT + plotH * (1 - (v - scale.min) / span);
 
@@ -366,7 +366,10 @@ function drawChart() {
   series.forEach((d, i) => {
     if (d.empty) return;
     const v = Math.max(Math.min(d[metric], scale.max), scale.min);
-    const h = Math.max(1.5, plotH * ((v - scale.min) / span));
+    // Une barre rognée par le plancher garde une amorce visible : « sous l'axe »,
+    // et non « rien saisi ».
+    const rognee = d[metric] < scale.min;
+    const h = Math.max(rognee ? 3 : 1.5, plotH * ((v - scale.min) / span));
     const cx = padL + colW * (i + 0.5);
     const isToday = d.key === today;
     g += `<rect class="bar${isToday ? ' is-today' : ''}" x="${(cx - barW / 2).toFixed(1)}" y="${(padT + plotH - h).toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="1.5"/>`;
