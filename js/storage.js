@@ -53,7 +53,7 @@ export async function requestPersist() {
 }
 
 export function exportFilename(now = new Date()) {
-  return `prise-de-masse-${dateKey(now)}.json`;
+  return `protal-${dateKey(now)}.json`;
 }
 
 export function exportJson(data) {

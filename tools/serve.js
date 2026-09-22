@@ -57,5 +57,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`Prise de masse : http://${HOST}:${PORT}/`);
+  console.log(`Protal : http://${HOST}:${PORT}/`);
 });

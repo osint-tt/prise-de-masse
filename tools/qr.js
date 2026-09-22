@@ -7,7 +7,7 @@ const DEFAULT_URL = 'https://osint-tt.github.io/prise-de-masse/';
 const url = process.argv[2] || process.env.PDM_URL || DEFAULT_URL;
 
 console.log('');
-console.log('  Prise de masse');
+console.log('  Protal');
 console.log(`  ${url}`);
 console.log('');
 qrcode.generate(url, { small: true }, (qr) => {

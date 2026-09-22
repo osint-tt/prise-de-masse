@@ -1,4 +1,4 @@
-# Prise de masse
+# Protal
 
 Petite application mobile pour noter ce que je mange et suivre mes calories et mes
 protéines, repas par repas et jour par jour, du 21 septembre au 21 octobre 2026.
@@ -30,7 +30,7 @@ seuil garde une petite amorce sur la ligne du bas ; son total exact reste lisibl
 ## Sauvegarder
 
 Les données vivent uniquement sur le téléphone. De temps en temps :
-**Paramètres → Exporter** crée un fichier `prise-de-masse-AAAA-MM-JJ.json`
+**Paramètres → Exporter** crée un fichier `protal-AAAA-MM-JJ.json`
 (partage natif sur iPhone, téléchargement ailleurs).
 **Paramètres → Importer** le relit, affiche un résumé et demande confirmation
 avant de remplacer les données.

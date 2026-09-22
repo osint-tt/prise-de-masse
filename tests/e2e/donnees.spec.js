@@ -115,7 +115,7 @@ test.describe('Export / import', () => {
       page.waitForEvent('download'),
       page.click('[data-action="export"]'),
     ]);
-    expect(download.suggestedFilename()).toBe('prise-de-masse-2026-09-21.json');
+    expect(download.suggestedFilename()).toBe('protal-2026-09-21.json');
 
     const file = testInfo.outputPath('sauvegarde.json');
     await download.saveAs(file);

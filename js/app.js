@@ -209,7 +209,7 @@ function viewHome() {
   return `<div class="screen">
     <header class="app-header">
       <div class="titles">
-        <h1>Prise de masse</h1>
+        <h1>Protal</h1>
         <p class="sub">${esc(sub)}</p>
       </div>
       <div class="header-actions">
@@ -525,7 +525,7 @@ function viewSettings() {
         <input type="file" id="import-file" accept="application/json,.json" hidden>
       </section>
 
-      <p class="version-line">Prise de masse — version ${esc(L.APP_VERSION)}</p>
+      <p class="version-line">Protal — version ${esc(L.APP_VERSION)}</p>
     </main>
   </div>`;
 }
