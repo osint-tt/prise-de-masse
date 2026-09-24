@@ -786,6 +786,13 @@ select {
   font-variant-numeric: tabular-nums;
 }
 
+/* Masse pesée du jour : une indication secondaire, plus discrète que les protéines. */
+.day-total .kg {
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .day-total .progress-list {
   margin-top: 10px;
 }
@@ -927,6 +934,23 @@ input[type='date'].input {
   font-size: 13px;
   color: var(--muted);
   margin-top: 6px;
+}
+
+/* Poids d'une unité : champ ajouté sous le rappel des valeurs par unité. */
+.field[data-unit-only] {
+  margin-top: 16px;
+}
+
+/* « facultatif » à côté d'un libellé de champ */
+.field label .opt {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 1px 5px;
+  margin-left: 6px;
+  vertical-align: 1px;
 }
 
 /* Case à cocher (aliment à l'unité) --------------------------------- */

@@ -1,13 +1,14 @@
 // Jeu de données réaliste, déterministe, partagé par les tests e2e et les captures.
 
 // `unit: 'piece'` = valeurs pour une unité (un œuf), sinon pour 100 g.
+// `unitGrams` = poids d'une unité, facultatif : sert au total en kilos du jour.
 export const FOODS = [
-  { id: 'f-pates', name: 'Pâtes', unit: 'g', kcal100: 350, prot100: 12 },
-  { id: 'f-poulet', name: 'Blanc de poulet', unit: 'g', kcal100: 121, prot100: 26 },
-  { id: 'f-riz', name: 'Riz complet', unit: 'g', kcal100: 355, prot100: 7.5 },
-  { id: 'f-fromage', name: 'Fromage blanc 3 %', unit: 'g', kcal100: 74, prot100: 7.8 },
-  { id: 'f-amandes', name: 'Amandes', unit: 'g', kcal100: 598, prot100: 21 },
-  { id: 'f-oeufs', name: 'Œuf', unit: 'piece', kcal100: 72, prot100: 6.3 },
+  { id: 'f-pates', name: 'Pâtes', unit: 'g', kcal100: 350, prot100: 12, unitGrams: null },
+  { id: 'f-poulet', name: 'Blanc de poulet', unit: 'g', kcal100: 121, prot100: 26, unitGrams: null },
+  { id: 'f-riz', name: 'Riz complet', unit: 'g', kcal100: 355, prot100: 7.5, unitGrams: null },
+  { id: 'f-fromage', name: 'Fromage blanc 3 %', unit: 'g', kcal100: 74, prot100: 7.8, unitGrams: null },
+  { id: 'f-amandes', name: 'Amandes', unit: 'g', kcal100: 598, prot100: 21, unitGrams: null },
+  { id: 'f-oeufs', name: 'Œuf', unit: 'piece', kcal100: 72, prot100: 6.3, unitGrams: 60 },
 ];
 
 const ISO = '2026-09-21T08:00:00.000Z';
@@ -26,6 +27,7 @@ function entry(suffix, foodId, grams) {
     grams,
     kcal100: f.kcal100,
     prot100: f.prot100,
+    unitGrams: f.unitGrams == null ? null : f.unitGrams,
     createdAt: ISO,
   };
 }

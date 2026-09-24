@@ -12,6 +12,11 @@ Les aliments se saisissent pour 100 g, ou **à l'unité** (un œuf, une banane) 
 « Aliment à l'unité » à la création. L'accueil affiche la moyenne par jour depuis le début
 de la période, sur les journées terminées — le jour en cours n'est pas compté.
 
+Le total d'une journée indique aussi, en petit, **la masse avalée en kilos**. Un aliment à
+l'unité n'y compte que si son « poids d'une unité » est renseigné (champ facultatif de la
+fiche aliment) : ce poids ne se déduit d'aucune autre valeur, puisque les calories d'un
+aliment à l'unité sont données par unité et non pour 100 g.
+
 Le graphique démarre toujours à 2 500 kcal / 60 g plutôt qu'à zéro, pour que les écarts entre
 journées restent lisibles (constantes `CHART_FLOORS` dans `js/logic.js`). Une journée sous ce
 seuil garde une petite amorce sur la ligne du bas ; son total exact reste lisible au tap.

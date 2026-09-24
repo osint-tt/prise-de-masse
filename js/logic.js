@@ -1,7 +1,7 @@
 // logic.js — logique pure : calculs, dates, parsing, validation.
 // Aucun accès au DOM ni au stockage : ce fichier est importable par Node pour les tests.
 
-export const APP_VERSION = '1.3.1';
+export const APP_VERSION = '1.4.0';
 
 export const SCHEMA_VERSION = 2;
 
@@ -37,6 +37,7 @@ export const LIMITS = {
   kcalUnitMax: 2000,
   protUnitMax: 200,
   piecesMax: 100,
+  unitGramsMax: 2000,
 };
 
 /** Quantité à laquelle se rapportent kcal100 / prot100 : 100 g, ou 1 unité. */
@@ -266,6 +267,11 @@ export function formatGrams(n) {
   return `${nfUpTo1.format(n || 0)} g`;
 }
 
+/** « 1,4 kg » : une masse en grammes, arrondie à 100 g près. */
+export function formatKg(grams) {
+  return `${nf1.format(round1((grams || 0) / 1000))} kg`;
+}
+
 /** « 300 g », « 2 unités », « 1 unité » selon l'unité de l'aliment. */
 export function formatQuantity(n, unit) {
   const value = n || 0;
@@ -301,6 +307,43 @@ export function entryKcal(entry) {
 export function entryProt(entry) {
   if (!entry) return 0;
   return ((Number(entry.prot100) || 0) * (Number(entry.grams) || 0)) / refQuantity(entry.unit);
+}
+
+/**
+ * Masse d'une entrée, en grammes.
+ * - aliment au gramme : c'est la quantité saisie ;
+ * - aliment à l'unité : le nombre d'unités × le poids d'une unité (`unitGrams`),
+ *   quand ce poids est renseigné. Il ne se déduit d'aucune autre valeur : les
+ *   calories d'un aliment à l'unité sont données par unité, pas pour 100 g.
+ * @param {Object} entry
+ * @param {Array} [foods] base d'aliments, pour retrouver le poids d'une unité
+ *   des entrées saisies avant qu'il ne soit renseigné.
+ * @returns {number} 0 quand le poids reste inconnu.
+ */
+export function entryGrams(entry, foods = null) {
+  if (!entry) return 0;
+  const quantity = Number(entry.grams) || 0;
+  if (normalizeUnit(entry.unit) !== 'piece') return quantity;
+
+  const own = Number(entry.unitGrams);
+  if (Number.isFinite(own) && own > 0) return own * quantity;
+
+  const food =
+    Array.isArray(foods) && entry.foodId
+      ? foods.find((f) => f && f.id === entry.foodId)
+      : null;
+  const known = food ? Number(food.unitGrams) : NaN;
+  return Number.isFinite(known) && known > 0 ? known * quantity : 0;
+}
+
+/** Masse totale d'une journée, en grammes, toutes sections confondues. */
+export function dayGrams(day, foods = null) {
+  let grams = 0;
+  for (const key of MEAL_KEYS) {
+    const list = day && Array.isArray(day[key]) ? day[key] : [];
+    for (const e of list) grams += entryGrams(e, foods);
+  }
+  return grams;
 }
 
 /** Totaux bruts (non arrondis) d'une liste d'entrées. */
@@ -476,8 +519,33 @@ export function validateFood(input, foods = [], excludeId = null) {
     errors.prot100 = `Entre 0 et ${formatInt(max.prot)} g.`;
   }
 
+  // Poids d'une unité : facultatif, et sans objet pour un aliment au gramme.
+  let unitGrams = null;
+  if (unit === 'piece' && !isBlank(input && input.unitGrams)) {
+    const n = parseNumber(input.unitGrams);
+    if (n === null || n <= 0) {
+      errors.unitGrams = 'Indique un poids, ou laisse vide.';
+    } else if (n > LIMITS.unitGramsMax) {
+      errors.unitGrams = `${formatInt(LIMITS.unitGramsMax)} g maximum.`;
+    } else {
+      unitGrams = n;
+    }
+  }
+
   const ok = Object.keys(errors).length === 0;
-  return ok ? { ok, errors, value: { name, unit, kcal100, prot100 } } : { ok, errors };
+  return ok ? { ok, errors, value: { name, unit, kcal100, prot100, unitGrams } } : { ok, errors };
+}
+
+function isBlank(v) {
+  return v === '' || v === null || v === undefined;
+}
+
+/** Poids d'une unité relu depuis une sauvegarde : null s'il est absent ou aberrant. */
+export function cleanUnitGrams(value, unit) {
+  if (normalizeUnit(unit) !== 'piece' || isBlank(value)) return null;
+  const n = parseNumber(value);
+  if (n === null || n <= 0 || n > LIMITS.unitGramsMax) return null;
+  return n;
 }
 
 /** Quantité : > 0, et bornée selon l'unité (5 000 g, ou 100 unités). */
@@ -567,6 +635,7 @@ function cleanEntry(raw) {
     grams,
     kcal100,
     prot100,
+    unitGrams: cleanUnitGrams(raw.unitGrams, unit),
     createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : new Date().toISOString(),
   };
 }
@@ -587,6 +656,7 @@ function cleanFood(raw) {
     unit,
     kcal100,
     prot100,
+    unitGrams: cleanUnitGrams(raw.unitGrams, unit),
     createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : new Date().toISOString(),
   };
 }

@@ -57,6 +57,70 @@ test('sous-totaux par repas et total de la journée', () => {
   assert.equal(total.prot, 72);
 });
 
+test('masse du jour : les grammes s’additionnent, les unités pèsent leur poids', () => {
+  const oeuf = { kcal100: 72, prot100: 6.3, unit: 'piece', unitGrams: 60, foodId: 'f-oeuf' };
+  const day = L.emptyDay();
+  day.petitdej.push({ ...entry(2, oeuf), unit: 'piece' }); // 2 œufs de 60 g
+  day.midi.push(entry(250));
+  day.soir.push(entry(300));
+  day.gouter.push(entry(75.5));
+
+  assert.equal(L.dayGrams(day), 745.5); // 120 + 625,5
+  assert.equal(L.entryGrams({ ...entry(3, oeuf), unit: 'piece' }), 180);
+  assert.equal(L.entryGrams(entry(250)), 250);
+  assert.equal(L.entryGrams(null), 0);
+  assert.equal(L.dayGrams(null), 0);
+  assert.equal(L.dayGrams(L.emptyDay()), 0);
+});
+
+test('masse : un aliment à l’unité sans poids renseigné ne pèse rien', () => {
+  const yaourt = { kcal100: 60, prot100: 4, unit: 'piece', foodId: 'f-yaourt' };
+  const e = { ...entry(2, yaourt), unit: 'piece' };
+
+  assert.equal(L.entryGrams(e), 0);
+  assert.equal(L.entryGrams(e, []), 0);
+
+  // Le poids renseigné après coup dans la base rattrape les entrées déjà saisies.
+  const foods = [{ id: 'f-yaourt', unit: 'piece', unitGrams: 125 }];
+  assert.equal(L.entryGrams(e, foods), 250);
+
+  // Mais le poids copié sur l'entrée reste prioritaire.
+  assert.equal(L.entryGrams({ ...e, unitGrams: 100 }, foods), 200);
+
+  const day = L.emptyDay();
+  day.gouter.push(e);
+  assert.equal(L.dayGrams(day), 0);
+  assert.equal(L.dayGrams(day, foods), 250);
+});
+
+test('poids d’une unité : facultatif, refusé s’il est absurde, ignoré au gramme', () => {
+  const base = { name: 'Banane', unit: 'piece', kcal100: '105', prot100: '1,3' };
+
+  assert.equal(L.validateFood(base).value.unitGrams, null); // absent = inconnu
+  assert.equal(L.validateFood({ ...base, unitGrams: '' }).value.unitGrams, null);
+  assert.equal(L.validateFood({ ...base, unitGrams: '120' }).value.unitGrams, 120);
+  assert.equal(L.validateFood({ ...base, unitGrams: '62,5' }).value.unitGrams, 62.5);
+
+  assert.equal(L.validateFood({ ...base, unitGrams: '0' }).ok, false);
+  assert.equal(L.validateFood({ ...base, unitGrams: '-5' }).ok, false);
+  assert.equal(L.validateFood({ ...base, unitGrams: 'abc' }).ok, false);
+  assert.match(L.validateFood({ ...base, unitGrams: '2500' }).errors.unitGrams, /maximum/);
+
+  // Un aliment au gramme n'a pas de poids d'unité : la valeur est ignorée.
+  const grammes = { name: 'Pâtes', unit: 'g', kcal100: '350', prot100: '12', unitGrams: '120' };
+  const res = L.validateFood(grammes);
+  assert.equal(res.ok, true);
+  assert.equal(res.value.unitGrams, null);
+});
+
+test('affichage d’une masse en kilos, arrondie à 0,1', () => {
+  assert.equal(L.formatKg(625.5), '0,6 kg');
+  assert.equal(L.formatKg(1450), '1,5 kg');
+  assert.equal(L.formatKg(1440), '1,4 kg');
+  assert.equal(L.formatKg(2000), '2,0 kg');
+  assert.equal(L.formatKg(0), '0,0 kg');
+});
+
 test('journée vide', () => {
   assert.equal(L.dayIsEmpty(null), true);
   assert.equal(L.dayIsEmpty(L.emptyDay()), true);
@@ -329,7 +393,13 @@ test('bornes de saisie élargies pour un aliment à l’unité', () => {
 test('l’unité est conservée par la validation d’un aliment', () => {
   const res = L.validateFood({ name: 'Œuf', unit: 'piece', kcal100: '72', prot100: '6,3' }, []);
   assert.equal(res.ok, true);
-  assert.deepEqual(res.value, { name: 'Œuf', unit: 'piece', kcal100: 72, prot100: 6.3 });
+  assert.deepEqual(res.value, {
+    name: 'Œuf',
+    unit: 'piece',
+    kcal100: 72,
+    prot100: 6.3,
+    unitGrams: null,
+  });
   // Une unité inconnue retombe sur le gramme.
   assert.equal(L.validateFood({ name: 'X', unit: 'litres', kcal100: '1', prot100: '1' }, []).value.unit, 'g');
 });

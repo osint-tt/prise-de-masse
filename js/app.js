@@ -400,6 +400,9 @@ function viewDay(key) {
   const next = L.nextDayKey(key, s.startDate, s.endDate);
   const day = dayOf(key);
   const totals = L.dayTotals(day);
+  // Masse avalée : rien à afficher tant qu'aucun aliment pesé n'est saisi.
+  const grams = L.dayGrams(day, state.foods);
+  const kgHtml = grams > 0 ? `<span class="kg" data-total-kg>${esc(L.formatKg(grams))}</span>` : '';
 
   const sections = L.MEALS.map((meal) => {
     const entries = (day && day[meal.key]) || [];
@@ -439,7 +442,7 @@ function viewDay(key) {
     <div class="day-total">
       <div class="row">
         <span class="label">Total du jour</span>
-        <span class="values"><span class="k" data-total-kcal>${esc(L.formatInt(totals.kcal))}<span class="p"> kcal</span></span><span class="p" data-total-prot>${esc(L.formatProt(totals.prot))}</span></span>
+        <span class="values"><span class="k" data-total-kcal>${esc(L.formatInt(totals.kcal))}<span class="p"> kcal</span></span><span class="p" data-total-prot>${esc(L.formatProt(totals.prot))}</span>${kgHtml}</span>
       </div>
       ${progressList(totals)}
     </div>
@@ -623,7 +626,9 @@ function foodsListHtml() {
       (f) => `<button class="food-row" data-action="edit-food" data-food="${esc(f.id)}">
         <span class="rl-main">
           <span class="f-name">${esc(f.name)}</span>
-          <span class="f-sub">${esc(L.formatKcal(f.kcal100))} · ${esc(L.formatGrams(f.prot100))} ${esc(L.perLabel(f.unit))}</span>
+          <span class="f-sub">${esc(L.formatKcal(f.kcal100))} · ${esc(L.formatGrams(f.prot100))} ${esc(L.perLabel(f.unit))}${
+            f.unitGrams ? ` · ${esc(L.formatGrams(f.unitGrams))}/u.` : ''
+          }</span>
         </span>
         <span class="chev">${ICONS.chevron}</span>
       </button>`
@@ -713,6 +718,7 @@ function openNewFoodSheet({ prefillName = '', onCreated = null } = {}) {
         unit: value.unit,
         kcal100: value.kcal100,
         prot100: value.prot100,
+        unitGrams: value.unitGrams,
         createdAt: new Date().toISOString(),
       };
       state.foods.push(food);
@@ -745,6 +751,7 @@ function openEditFoodSheet(foodId) {
       food.unit = value.unit;
       food.kcal100 = value.kcal100;
       food.prot100 = value.prot100;
+      food.unitGrams = value.unitGrams;
       persist();
       closeSheet();
       toast('Aliment modifié');
@@ -782,6 +789,12 @@ function renderFoodForm({ title, food, submitLabel, onSubmit, onDelete = null, n
       </div>
     </div>
     <p class="hint" data-hint>Valeurs indiquées sur l’emballage, pour 100 g.</p>
+    <div class="field" data-unit-only hidden>
+      <label for="f-weight">Poids d’une unité <span class="opt">facultatif</span></label>
+      <input class="input num" type="text" inputmode="decimal" id="f-weight" autocomplete="off" value="${esc(numToInput(food.unitGrams))}" placeholder="60">
+      <p class="hint">En grammes, pour le total en kilos du jour. Un œuf ≈ 60 g, une banane ≈ 120 g.</p>
+      <p class="field-error" data-error="unitGrams" hidden></p>
+    </div>
     <button class="btn primary" data-submit type="button">${esc(submitLabel)}</button>
     ${onDelete ? `<div class="btn-row"><button class="btn ghost" data-delete type="button">${ICONS.trash}Supprimer</button></div>` : ''}
   `;
@@ -792,8 +805,10 @@ function renderFoodForm({ title, food, submitLabel, onSubmit, onDelete = null, n
       const unitBox = $('#f-unit', body);
       const kcal = $('#f-kcal', body);
       const prot = $('#f-prot', body);
+      const weight = $('#f-weight', body);
+      const weightField = $('[data-unit-only]', body);
       const submit = $('[data-submit]', body);
-      const touched = { name: false, kcal100: false, prot100: false };
+      const touched = { name: false, kcal100: false, prot100: false, unitGrams: false };
 
       const currentUnit = () => (unitBox.checked ? 'piece' : 'g');
 
@@ -809,11 +824,13 @@ function renderFoodForm({ title, food, submitLabel, onSubmit, onDelete = null, n
             : 'Valeurs indiquées sur l’emballage, pour 100 g.';
         kcal.placeholder = currentUnit() === 'piece' ? '72' : '350';
         prot.placeholder = currentUnit() === 'piece' ? '6,3' : '12';
+        // Le poids d'une unité n'a de sens que pour un aliment à l'unité.
+        weightField.hidden = currentUnit() !== 'piece';
       };
 
       const showError = (field, message) => {
         const el = body.querySelector(`[data-error="${field}"]`);
-        const input = { name, kcal100: kcal, prot100: prot }[field];
+        const input = { name, kcal100: kcal, prot100: prot, unitGrams: weight }[field];
         if (message && touched[field]) {
           el.textContent = message;
           el.hidden = false;
@@ -826,13 +843,20 @@ function renderFoodForm({ title, food, submitLabel, onSubmit, onDelete = null, n
 
       const check = () => {
         const res = L.validateFood(
-          { name: name.value, unit: currentUnit(), kcal100: kcal.value, prot100: prot.value },
+          {
+            name: name.value,
+            unit: currentUnit(),
+            kcal100: kcal.value,
+            prot100: prot.value,
+            unitGrams: weight.value,
+          },
           state.foods,
           excludeId
         );
         showError('name', res.errors.name);
         showError('kcal100', res.errors.kcal100);
         showError('prot100', res.errors.prot100);
+        showError('unitGrams', res.errors.unitGrams);
         submit.disabled = !res.ok;
         return res;
       };
@@ -844,7 +868,13 @@ function renderFoodForm({ title, food, submitLabel, onSubmit, onDelete = null, n
 
       // Les erreurs apparaissent à la frappe et à la validation, jamais au simple
       // passage dans le champ : sinon la feuille change de hauteur sous le doigt.
-      [['name', name], ['kcal100', kcal], ['prot100', prot]].forEach(([field, input]) => {
+      const champs = [
+        ['name', name],
+        ['kcal100', kcal],
+        ['prot100', prot],
+        ['unitGrams', weight],
+      ];
+      champs.forEach(([field, input]) => {
         input.addEventListener('input', () => {
           touched[field] = true;
           check();
@@ -858,7 +888,7 @@ function renderFoodForm({ title, food, submitLabel, onSubmit, onDelete = null, n
       });
 
       const submitNow = () => {
-        touched.name = touched.kcal100 = touched.prot100 = true;
+        touched.name = touched.kcal100 = touched.prot100 = touched.unitGrams = true;
         const res = check();
         if (res.ok) onSubmit(res.value);
       };
@@ -868,11 +898,6 @@ function renderFoodForm({ title, food, submitLabel, onSubmit, onDelete = null, n
 
       syncUnitLabels();
       check();
-      submit.disabled = !L.validateFood(
-        { name: name.value, unit: currentUnit(), kcal100: kcal.value, prot100: prot.value },
-        state.foods,
-        excludeId
-      ).ok;
       if (!food.name) name.focus();
     },
   });
@@ -981,6 +1006,7 @@ function showFoodPicker(dateKey, mealKey, query) {
               unit: value.unit,
               kcal100: value.kcal100,
               prot100: value.prot100,
+              unitGrams: value.unitGrams,
               createdAt: new Date().toISOString(),
             };
             state.foods.push(food);
@@ -1057,6 +1083,7 @@ function showQuantityStep(dateKey, mealKey, food, backQuery) {
           grams,
           kcal100: food.kcal100,
           prot100: food.prot100,
+          unitGrams: food.unitGrams == null ? null : food.unitGrams,
           createdAt: new Date().toISOString(),
         });
         persist();

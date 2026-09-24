@@ -299,6 +299,82 @@ test.describe('Aliments à l’unité', () => {
     const totals = L.dayTotals(sampleData().days['2026-09-21']);
     expect(await text(page.locator('.day-total .values'))).toContain(norm(L.formatKcal(totals.kcal)));
   });
+
+  test('le total du jour affiche la masse en kilos, œufs compris', async ({ page }) => {
+    await open(page, sampleData(), { hash: '#/jour/2026-09-21' });
+
+    const data = sampleData();
+    const day = data.days['2026-09-21'];
+    expect(await text(page.locator('.day-total [data-total-kg]'))).toBe(
+      norm(L.formatKg(L.dayGrams(day, data.foods)))
+    );
+
+    // Les œufs pèsent 60 g l'unité : ils comptent en plus des aliments au gramme.
+    const auGramme = L.MEAL_KEYS.flatMap((k) => day[k])
+      .filter((e) => e.unit !== 'piece')
+      .reduce((somme, e) => somme + e.grams, 0);
+    const oeufs = day.petitdej.filter((e) => e.unit === 'piece');
+    expect(oeufs.length).toBe(1);
+    expect(L.dayGrams(day, data.foods)).toBe(auGramme + oeufs[0].grams * 60);
+
+    // Une entrée de plus, et la masse suit.
+    await addEntry(page, 'gouter', 'Pâtes', '250');
+    expect(await text(page.locator('.day-total [data-total-kg]'))).toBe(
+      norm(L.formatKg(L.dayGrams(day, data.foods) + 250))
+    );
+  });
+
+  test('sans rien de pesé, aucun kilo n’est affiché', async ({ page }) => {
+    await open(page, sampleData(), { hash: '#/jour/2026-10-05' }); // journée sans rien de saisi
+
+    await expect(page.locator('.day-total .values')).toContainText('0 kcal');
+    await expect(page.locator('.day-total [data-total-kg]')).toHaveCount(0);
+  });
+
+  test('poids d’une unité : facultatif, et renseigné après coup il rattrape les jours passés', async ({
+    page,
+  }) => {
+    await open(page);
+
+    // Le champ n'apparaît qu'une fois la case « aliment à l'unité » cochée.
+    await page.click('.fab');
+    await expect(page.locator('.sheet [data-unit-only]')).toBeHidden();
+    await page.fill('#f-name', 'Yaourt');
+    await page.click('.sheet .check-row');
+    await expect(page.locator('.sheet [data-unit-only]')).toBeVisible();
+    await page.fill('#f-kcal', '60');
+    await page.fill('#f-prot', '4');
+    await page.click('.sheet [data-submit]'); // poids laissé vide
+    await page.waitForSelector('.sheet', { state: 'detached' });
+
+    await page.goto('/#/jour/2026-09-21');
+    await addEntry(page, 'gouter', 'Yaourt', '4');
+    await expect(page.locator('section.meal[data-meal="gouter"] .entry')).toHaveCount(1);
+    expect((await storedData(page)).foods[0].unitGrams).toBe(null);
+    await expect(page.locator('.day-total [data-total-kg]')).toHaveCount(0);
+
+    // Poids renseigné après coup sur l'aliment.
+    await page.goto('/#/aliments');
+    await page.click('.food-row:has-text("Yaourt")');
+    await page.fill('.sheet #f-weight', '125');
+    await page.click('.sheet [data-submit]');
+    await page.waitForSelector('.sheet', { state: 'detached' });
+    expect((await storedData(page)).foods[0].unitGrams).toBe(125);
+    expect(await text(page.locator('.food-row:has-text("Yaourt")'))).toContain('125 g/u.');
+
+    // La journée déjà saisie compte maintenant ses 4 × 125 g.
+    await page.goto('/#/jour/2026-09-21');
+    expect(await text(page.locator('.day-total [data-total-kg]'))).toBe('0,5 kg');
+
+    // Un poids absurde est refusé.
+    await page.goto('/#/aliments');
+    await page.click('.food-row:has-text("Yaourt")');
+    await page.fill('.sheet #f-weight', '0');
+    await expect(page.locator('.sheet [data-error="unitGrams"]')).toBeVisible();
+    await expect(page.locator('.sheet [data-submit]')).toBeDisabled();
+    await page.fill('.sheet #f-weight', '2500');
+    await expect(page.locator('.sheet [data-error="unitGrams"]')).toContainText('maximum');
+  });
 });
 
 test.describe('Base d’aliments', () => {
