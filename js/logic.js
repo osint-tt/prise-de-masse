@@ -1,7 +1,7 @@
 // logic.js — logique pure : calculs, dates, parsing, validation.
 // Aucun accès au DOM ni au stockage : ce fichier est importable par Node pour les tests.
 
-export const APP_VERSION = '1.4.0';
+export const APP_VERSION = '1.5.0';
 
 export const SCHEMA_VERSION = 2;
 
@@ -410,6 +410,35 @@ export function periodAverage(days, startKey, endKey, today) {
     prot += t.prot;
   }
   return { days: elapsed, kcal: kcal / elapsed, prot: prot / elapsed };
+}
+
+/**
+ * Cumul des `count` derniers jours, jour en cours compris, sans sortir de la
+ * période. La fenêtre est raccourcie tant que la période n'a pas `count` jours
+ * derrière elle, et se fige sur la fin de période une fois celle-ci passée.
+ * @returns {{from:string, to:string, days:number, kcal:number, prot:number, grams:number}|null}
+ *   null avant le début de la période.
+ */
+export function lastDaysTotals(days, foods, startKey, endKey, today, count = 7) {
+  if (!isDateKey(today) || periodLength(startKey, endKey) === 0) return null;
+  if (today < startKey) return null;
+
+  const to = today > endKey ? endKey : today;
+  const wanted = addDays(to, -(Math.max(1, count) - 1));
+  const from = wanted < startKey ? startKey : wanted;
+  const span = diffDays(from, to) + 1;
+
+  let kcal = 0;
+  let prot = 0;
+  let grams = 0;
+  for (let i = 0; i < span; i++) {
+    const day = days ? days[addDays(from, i)] : null;
+    const t = dayTotals(day);
+    kcal += t.kcal;
+    prot += t.prot;
+    grams += dayGrams(day, foods);
+  }
+  return { from, to, days: span, kcal, prot, grams };
 }
 
 /** Série { key, kcal, prot } pour chaque jour de la période. */

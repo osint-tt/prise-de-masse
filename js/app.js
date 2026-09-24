@@ -304,7 +304,22 @@ function viewChartShell() {
         </div>
       </div>
       <div class="chart-holder" data-chart></div>
+      ${viewLastWeek()}
     </section>`;
+}
+
+/** Ce qui est passé dans les 7 derniers jours, jour en cours compris. */
+function viewLastWeek() {
+  const s = settings();
+  const r = L.lastDaysTotals(state.days, state.foods, s.startDate, s.endDate, today, 7);
+  if (!r || (r.kcal === 0 && r.grams === 0)) return '';
+  const periode = r.days === 1 ? 'Aujourd’hui' : `${L.formatInt(r.days)} derniers jours`;
+  const kilos = r.grams > 0 ? ` · ${esc(L.formatKg(r.grams))}` : '';
+  // Sur plusieurs jours, le dixième de gramme de protéines n'apprend plus rien.
+  const prot = `${L.formatInt(r.prot)} g`;
+  return `<p class="chart-footnote num" data-last-week>${esc(periode)} · ${esc(
+    L.formatKcal(r.kcal)
+  )} · ${esc(prot)}${kilos}</p>`;
 }
 
 function drawChart() {

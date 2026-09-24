@@ -659,6 +659,51 @@ test('moyenne : base vide', () => {
   assert.equal(a.prot, 0);
 });
 
+test('7 derniers jours : fenêtre glissante, jour en cours compris', () => {
+  // 10 journées saisies à 1 000 kcal, on est au jour 10 (30/09).
+  const r = L.lastDaysTotals(daysOf(10), [], S, E, '2026-09-30', 7);
+  assert.equal(r.days, 7);
+  assert.equal(r.from, '2026-09-24');
+  assert.equal(r.to, '2026-09-30');
+  assert.equal(r.kcal, 7000);
+  assert.equal(r.prot, 350);
+
+  // Ce qui est saisi aujourd'hui compte, lui : c'est un cumul, pas une moyenne.
+  const days = daysOf(10);
+  days['2026-09-30'].soir = [{ kcal100: 500, prot100: 10, grams: 100 }];
+  assert.equal(L.lastDaysTotals(days, [], S, E, '2026-09-30', 7).kcal, 7500);
+});
+
+test('7 derniers jours : la fenêtre ne déborde pas de la période', () => {
+  // Jour 3 : il n'y a que 3 journées derrière.
+  const debut = L.lastDaysTotals(daysOf(3), [], S, E, '2026-09-23', 7);
+  assert.equal(debut.days, 3);
+  assert.equal(debut.from, S);
+  assert.equal(debut.kcal, 3000);
+
+  // Après la fin, la fenêtre se fige sur les 7 derniers jours de la période.
+  const apres = L.lastDaysTotals(daysOf(31), [], S, E, '2026-11-15', 7);
+  assert.equal(apres.days, 7);
+  assert.equal(apres.to, E);
+  assert.equal(apres.from, '2026-10-15');
+
+  assert.equal(L.lastDaysTotals(daysOf(3), [], S, E, '2026-09-20', 7), null, 'avant le début');
+  assert.equal(L.lastDaysTotals({}, [], S, E, 'pas-une-date', 7), null, 'date illisible');
+});
+
+test('7 derniers jours : les kilos suivent les mêmes règles que la journée', () => {
+  const oeuf = { kcal100: 72, prot100: 6.3, unit: 'piece', foodId: 'f-oeuf', grams: 2 };
+  const days = daysOf(3); // 3 x 100 g de l'aliment de test
+  days['2026-09-21'].petitdej = [oeuf];
+
+  // Sans poids connu, les œufs ne pèsent rien.
+  assert.equal(L.lastDaysTotals(days, [], S, E, '2026-09-23', 7).grams, 300);
+
+  // Avec le poids dans la base, ils comptent.
+  const foods = [{ id: 'f-oeuf', unit: 'piece', unitGrams: 60 }];
+  assert.equal(L.lastDaysTotals(days, foods, S, E, '2026-09-23', 7).grams, 420);
+});
+
 /* ------------------------------------------------------------------ */
 /* Graphique                                                           */
 /* ------------------------------------------------------------------ */

@@ -17,6 +17,9 @@ l'unité n'y compte que si son « poids d'une unité » est renseigné (champ fa
 fiche aliment) : ce poids ne se déduit d'aucune autre valeur, puisque les calories d'un
 aliment à l'unité sont données par unité et non pour 100 g.
 
+Sous le graphique, une ligne en tout petit récapitule les calories, les protéines et les
+kilos avalés sur les **7 derniers jours**, jour en cours compris.
+
 Le graphique démarre toujours à 2 500 kcal / 60 g plutôt qu'à zéro, pour que les écarts entre
 journées restent lisibles (constantes `CHART_FLOORS` dans `js/logic.js`). Une journée sous ce
 seuil garde une petite amorce sur la ligne du bas ; son total exact reste lisible au tap.

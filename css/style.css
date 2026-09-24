@@ -246,8 +246,9 @@ select {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  /* Le bas dégage la place du bouton flottant : rien ne passe sous lui. */
-  padding: 0 var(--pad) calc(var(--safe-b) + 78px);
+  /* Le bas dégage la place du bouton flottant : rien ne passe sous lui.
+     Le cumul des 7 jours occupe cette bande, à gauche du bouton. */
+  padding: 0 var(--pad) calc(var(--safe-b) + 50px);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -590,6 +591,16 @@ select {
   font-size: 14px;
   text-align: center;
   padding: 0 20px;
+}
+
+/* Cumul des 7 derniers jours, sous le graphique : une note, pas une donnée. */
+.chart-footnote {
+  margin-top: 4px;
+  /* La marge droite garde le texte à l'écart du bouton flottant. */
+  padding-right: 64px;
+  font-size: 11px;
+  letter-spacing: 0.01em;
+  color: var(--faint);
 }
 
 /* Bouton flottant --------------------------------------------------- */

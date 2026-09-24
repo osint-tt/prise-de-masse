@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { open, text, createFood, addEntry, norm } from './helpers.js';
-import { sampleData, filledDays } from '../fixtures/sample-data.js';
+import { sampleData, emptyData, filledDays } from '../fixtures/sample-data.js';
 import * as L from '../../js/logic.js';
 
 test.describe('Navigation', () => {
@@ -252,6 +252,58 @@ test.describe('Navigation', () => {
     await addEntry(page, 'soir', 'Pâtes', '200'); // 700 kcal
     await page.click('[data-action="back-home"]');
     expect(await text(page.locator('.average-card .k'))).toBe('700 kcal');
+  });
+
+  test('sous le graphique, le cumul des 7 derniers jours', async ({ page }) => {
+    const data = sampleData();
+    data.settings.startDate = '2026-09-07'; // aujourd'hui (21/09) devient le jour 15
+    data.days = filledDays(15, '2026-09-07');
+    await open(page, data);
+
+    const note = page.locator('[data-last-week]');
+    await expect(note).toBeVisible();
+
+    // Les 7 journées du 15/09 au 21/09, jour en cours compris.
+    const attendu = L.lastDaysTotals(
+      data.days,
+      data.foods,
+      data.settings.startDate,
+      data.settings.endDate,
+      '2026-09-21',
+      7
+    );
+    expect(attendu.days).toBe(7);
+    expect(attendu.from).toBe('2026-09-15');
+
+    const texte = await text(note);
+    expect(texte).toContain('7 derniers jours');
+    expect(texte).toContain(norm(L.formatKcal(attendu.kcal)));
+    // Sur une semaine, les protéines sont arrondies au gramme.
+    expect(texte).toContain(`${norm(L.formatInt(attendu.prot))} g`);
+    expect(texte).toContain(norm(L.formatKg(attendu.grams)));
+
+    // Une saisie sur aujourd'hui entre bien dans le cumul, elle.
+    await page.goto('/#/jour/2026-09-21');
+    await addEntry(page, 'grignotage', 'Pâtes', '200'); // 700 kcal
+    await page.click('[data-action="back-home"]');
+    expect(await text(page.locator('[data-last-week]'))).toContain(
+      norm(L.formatKcal(attendu.kcal + 700))
+    );
+  });
+
+  test('au début de la période, le cumul porte sur les jours écoulés seulement', async ({
+    page,
+  }) => {
+    const data = sampleData();
+    data.settings.startDate = '2026-09-19'; // aujourd'hui (21/09) = jour 3
+    data.days = filledDays(3, '2026-09-19');
+    await open(page, data);
+    expect(await text(page.locator('[data-last-week]'))).toContain('3 derniers jours');
+  });
+
+  test('sans rien de saisi, aucun cumul sous le graphique', async ({ page }) => {
+    await open(page, emptyData());
+    await expect(page.locator('[data-last-week]')).toHaveCount(0);
   });
 
   test('la moyenne disparaît avant le début de la période', async ({ page }) => {
