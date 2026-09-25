@@ -118,6 +118,7 @@ function parseRoute() {
   if (m && L.isDateKey(m[1])) return { name: 'day', date: m[1] };
   if (raw === '/parametres') return { name: 'settings' };
   if (raw === '/aliments') return { name: 'foods' };
+  if (raw === '/statistiques') return { name: 'stats' };
   return { name: 'home' };
 }
 
@@ -150,6 +151,7 @@ function render() {
   if (route.name === 'day') html = viewDay(route.date);
   else if (route.name === 'settings') html = viewSettings();
   else if (route.name === 'foods') html = viewFoods();
+  else if (route.name === 'stats') html = viewStats();
   else html = viewHome();
 
   appEl().innerHTML = html;
@@ -483,6 +485,16 @@ function viewSettings() {
     </header>
     <main class="plain-main" data-scroll>
       <section class="group">
+        <button class="row-link" data-action="stats">
+          <span class="rl-main">
+            <span class="rl-title">Statistiques</span>
+            <span class="rl-sub">Records, semaines, repas, aliments</span>
+          </span>
+          <span class="chev">${ICONS.chevron}</span>
+        </button>
+      </section>
+
+      <section class="group">
         <p class="section-label">Thème</p>
         <div class="choice-list">
           ${themeChoice('auto', 'Automatique')}
@@ -597,6 +609,191 @@ function wireSettingsScreen() {
   goalProt.addEventListener('input', applyGoals);
 
   $('#import-file').addEventListener('change', onImportFile);
+}
+
+/* ------------------------------------------------------------------ */
+/* Statistiques                                                        */
+/* ------------------------------------------------------------------ */
+
+/** Ligne de statistique : titre et précision à gauche, valeurs à droite. */
+function statRow({ title, sub = '', value, detail = '', date = null }) {
+  const inner = `<span class="sr-main">
+      <span class="sr-title">${esc(title)}</span>
+      ${sub ? `<span class="sr-sub">${esc(sub)}</span>` : ''}
+    </span>
+    <span class="sr-values">
+      <span class="sr-value num">${esc(value)}</span>
+      ${detail ? `<span class="sr-detail num">${esc(detail)}</span>` : ''}
+    </span>`;
+  // Un record s'ouvre sur sa journée.
+  return date
+    ? `<button class="stat-row" data-action="open-day" data-date="${esc(date)}">${inner}</button>`
+    : `<div class="stat-row">${inner}</div>`;
+}
+
+/** Protéines d'un cumul sur plusieurs jours : au gramme, comme sur l'accueil. */
+function protSum(g) {
+  return `${L.formatInt(g)} g`;
+}
+
+function joursLabel(n) {
+  return `${L.formatInt(n)} jour${n > 1 ? 's' : ''}`;
+}
+
+function viewStats() {
+  const s = settings();
+  const st = L.periodStats(state, today);
+  const num = L.dayNumber(today, s.startDate, s.endDate);
+  const n = L.periodLength(s.startDate, s.endDate);
+  const sub = num ? `Jour ${num} / ${n}` : `${L.formatInt(n)} jours`;
+
+  let body;
+  if (!st) {
+    body = `<p class="empty-state">La période n’a pas encore commencé.<br>Les statistiques apparaîtront dès son premier jour.</p>`;
+  } else if (st.filled === 0) {
+    body = `<p class="empty-state">Aucune donnée pour l’instant.<br>Les statistiques apparaîtront dès le premier repas saisi.</p>`;
+  } else {
+    body = [
+      statsTotals(st),
+      statsRecords(st),
+      statsGoals(st),
+      statsWeeks(st),
+      statsMeals(st),
+      statsFoods(st),
+    ].join('');
+  }
+
+  return `<div class="screen">
+    <header class="app-header">
+      <button class="icon-btn back-btn" data-action="back-settings" aria-label="Retour aux paramètres">${ICONS.back}</button>
+      <div class="titles">
+        <h1>Statistiques</h1>
+        <p class="sub">${esc(sub)}</p>
+      </div>
+    </header>
+    <main class="plain-main" data-scroll>${body}</main>
+  </div>`;
+}
+
+function statsTotals(st) {
+  const cell = (value, unit) =>
+    `<div class="stat-cell"><span class="sc-value num">${esc(value)}</span><span class="sc-unit">${esc(unit)}</span></div>`;
+  return `<section class="group" data-stats="bilan">
+      <p class="section-label">Depuis le début</p>
+      <div class="stat-grid">
+        ${cell(L.formatInt(st.totals.kcal), 'kcal')}
+        ${cell(L.formatInt(st.totals.prot), 'g de protéines')}
+        ${cell(L.formatKg(st.totals.grams).replace(' kg', ''), 'kg avalés')}
+      </div>
+      <p class="hint">${esc(`${joursLabel(st.filled)} rempli${st.filled > 1 ? 's' : ''} sur ${L.formatInt(st.elapsed)}, jour en cours compris.`)}</p>
+    </section>`;
+}
+
+function statsRecords(st) {
+  const r = st.records;
+  if (!r) {
+    return `<section class="group" data-stats="records">
+        <p class="section-label">Records</p>
+        <p class="hint">Les records portent sur les journées terminées : ils apparaîtront demain.</p>
+      </section>`;
+  }
+  const date = (rec) => L.formatLongDate(rec.key);
+  const rows = [
+    statRow({ title: 'Le plus de calories', sub: date(r.maxKcal), value: L.formatKcal(r.maxKcal.value), date: r.maxKcal.key }),
+    statRow({ title: 'Le moins de calories', sub: date(r.minKcal), value: L.formatKcal(r.minKcal.value), date: r.minKcal.key }),
+    statRow({ title: 'Le plus de protéines', sub: date(r.maxProt), value: L.formatProt(r.maxProt.value), date: r.maxProt.key }),
+    statRow({ title: 'Le moins de protéines', sub: date(r.minProt), value: L.formatProt(r.minProt.value), date: r.minProt.key }),
+  ];
+  if (r.maxGrams) {
+    rows.push(
+      statRow({ title: 'Le plus de nourriture', sub: date(r.maxGrams), value: L.formatKg(r.maxGrams.value), date: r.maxGrams.key })
+    );
+  }
+  if (r.biggestMeal) {
+    rows.push(
+      statRow({
+        title: 'Le plus gros repas',
+        sub: `${r.biggestMeal.label} · ${date(r.biggestMeal)}`,
+        value: L.formatKcal(r.biggestMeal.value),
+        date: r.biggestMeal.key,
+      })
+    );
+  }
+  return `<section class="group" data-stats="records">
+      <p class="section-label">Records</p>
+      <div class="stat-list">${rows.join('')}</div>
+      <p class="hint">Sur les journées terminées. Touche un record pour ouvrir la journée.</p>
+    </section>`;
+}
+
+function statsGoals(st) {
+  const rows = [];
+  const row = (label, g) => {
+    const pct = g.of ? (g.hit / g.of) * 100 : 0;
+    return `<div class="progress-row">
+        <div class="progress-head"><span>${esc(label)}</span><span class="num">${esc(`${L.formatInt(g.hit)} / ${joursLabel(g.of)}`)}</span></div>
+        <div class="progress-track"><div class="progress-fill" style="width:${pct.toFixed(1)}%"></div></div>
+      </div>`;
+  };
+  if (st.goals.kcal && st.goals.kcal.of) rows.push(row(`Calories ≥ ${L.formatKcal(st.goals.kcal.goal)}`, st.goals.kcal));
+  if (st.goals.prot && st.goals.prot.of) rows.push(row(`Protéines ≥ ${L.formatProt(st.goals.prot.goal)}`, st.goals.prot));
+  if (rows.length === 0) return '';
+  return `<section class="group" data-stats="objectifs">
+      <p class="section-label">Objectifs atteints</p>
+      <div class="progress-list">${rows.join('')}</div>
+      <p class="hint">Sur les journées terminées ; une journée non saisie compte comme manquée.</p>
+    </section>`;
+}
+
+function statsWeeks(st) {
+  const rows = st.weeks
+    .map((w) =>
+      statRow({
+        title: L.formatDayRange(w.from, w.to),
+        sub: w.current ? `En cours · ${joursLabel(w.days)}` : joursLabel(w.days),
+        value: L.formatKcal(w.kcal),
+        detail: `${protSum(w.prot)}${w.grams > 0 ? ` · ${L.formatKg(w.grams)}` : ''}`,
+      })
+    )
+    .join('');
+  return `<section class="group" data-stats="semaines">
+      <p class="section-label">Par semaine, du lundi au dimanche</p>
+      <div class="stat-list">${rows}</div>
+    </section>`;
+}
+
+function statsMeals(st) {
+  const rows = st.meals
+    .map((m) => {
+      const pct = m.share * 100;
+      return `<div class="progress-row">
+          <div class="progress-head"><span>${esc(m.label)}</span><span class="num">${esc(`${L.formatInt(pct)} % · ${L.formatKcal(m.kcal)}`)}</span></div>
+          <div class="progress-track"><div class="progress-fill" style="width:${pct.toFixed(1)}%"></div></div>
+        </div>`;
+    })
+    .join('');
+  return `<section class="group" data-stats="repas">
+      <p class="section-label">D’où viennent les calories</p>
+      <div class="progress-list">${rows}</div>
+    </section>`;
+}
+
+function statsFoods(st) {
+  if (st.foods.length === 0) return '';
+  const rows = st.foods
+    .map((f) =>
+      statRow({
+        title: f.name,
+        sub: `${L.formatInt(f.count)} fois${f.grams > 0 ? ` · ${L.formatKg(f.grams)}` : ''}`,
+        value: L.formatKcal(f.kcal),
+        detail: `${protSum(f.prot)} de protéines`,
+      })
+    )
+    .join('');
+  return `<section class="group" data-stats="aliments">
+      <p class="section-label">Aliments qui apportent le plus</p>
+      <div class="stat-list">${rows}</div>
+    </section>`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1325,6 +1522,9 @@ function handleAction(action, el) {
       break;
     case 'foods':
       go('#/aliments');
+      break;
+    case 'stats':
+      go('#/statistiques');
       break;
     case 'back-home':
       go('#/');

@@ -778,3 +778,188 @@ test('progression bornée entre 0 et 100 %', () => {
   assert.equal(L.progressPercent(0, 3200), 0);
   assert.equal(L.progressPercent(100, null), 0);
 });
+
+/* ------------------------------------------------------------------ */
+/* Statistiques                                                        */
+/* ------------------------------------------------------------------ */
+
+/** Une journée d'une seule entrée au gramme, avec ses kcal et protéines totales. */
+function oneEntryDay(kcal, prot, { meal = 'midi', grams = 100, foodId = 'f-test', name = 'Test' } = {}) {
+  const day = L.emptyDay();
+  day[meal].push({
+    foodId,
+    name,
+    unit: 'g',
+    grams,
+    kcal100: (kcal * 100) / grams,
+    prot100: (prot * 100) / grams,
+  });
+  return day;
+}
+
+function statsData(days, settings = {}) {
+  return {
+    version: 2,
+    settings: { theme: 'auto', startDate: S, endDate: E, goalKcal: null, goalProt: null, ...settings },
+    foods: [],
+    days,
+  };
+}
+
+test('stats : intervalle de dates lisible', () => {
+  assert.equal(ns(L.formatDayRange('2026-09-21', '2026-09-27')), '21 – 27 sept.');
+  assert.equal(ns(L.formatDayRange('2026-09-28', '2026-10-04')), '28 sept. – 4 oct.');
+  assert.equal(ns(L.formatDayRange('2026-10-21', '2026-10-21')), '21 oct.');
+  assert.equal(L.formatDayRange('pas', 'une date'), '');
+});
+
+test('stats : rien avant le début de la période', () => {
+  assert.equal(L.periodStats(statsData({}), '2026-09-20'), null);
+  assert.equal(L.periodStats(statsData({}), 'pas-une-date'), null);
+  assert.equal(L.periodStats(null, '2026-09-25'), null);
+});
+
+test('stats : le bilan compte le jour en cours', () => {
+  const days = {
+    '2026-09-21': oneEntryDay(2500, 150),
+    '2026-09-22': oneEntryDay(3000, 170),
+    '2026-09-23': oneEntryDay(1000, 40), // jour en cours, à moitié saisi
+  };
+  const st = L.periodStats(statsData(days), '2026-09-23');
+  assert.equal(st.elapsed, 3);
+  assert.equal(st.finished, 2);
+  assert.equal(st.filled, 3);
+  assert.equal(Math.round(st.totals.kcal), 6500);
+  assert.equal(Math.round(st.totals.prot), 360);
+  assert.equal(st.totals.grams, 300);
+});
+
+test('stats : records sur les journées terminées et remplies seulement', () => {
+  const days = {
+    '2026-09-21': oneEntryDay(2800, 160),
+    // 22/09 : rien saisi — une journée vide n'est pas « la moins calorique ».
+    '2026-09-23': oneEntryDay(3400, 150, { grams: 900 }),
+    '2026-09-24': oneEntryDay(2600, 190),
+    '2026-09-25': oneEntryDay(500, 20), // jour en cours : exclu des records
+  };
+  const r = L.periodStats(statsData(days), '2026-09-25').records;
+
+  assert.equal(r.maxKcal.key, '2026-09-23');
+  assert.equal(Math.round(r.maxKcal.value), 3400);
+  assert.equal(r.minKcal.key, '2026-09-24');
+  assert.equal(Math.round(r.minKcal.value), 2600);
+  assert.equal(r.maxProt.key, '2026-09-24');
+  assert.equal(r.minProt.key, '2026-09-23');
+  assert.deepEqual(r.maxGrams, { key: '2026-09-23', value: 900 });
+  assert.equal(r.biggestMeal.key, '2026-09-23');
+  assert.equal(r.biggestMeal.meal, 'midi');
+  assert.equal(r.biggestMeal.label, 'Repas midi');
+});
+
+test('stats : à égalité, le record revient à la première journée', () => {
+  const days = {
+    '2026-09-21': oneEntryDay(3000, 150),
+    '2026-09-22': oneEntryDay(3000, 150),
+  };
+  const r = L.periodStats(statsData(days), '2026-09-23').records;
+  assert.equal(r.maxKcal.key, '2026-09-21');
+  assert.equal(r.minKcal.key, '2026-09-21');
+});
+
+test('stats : pas de record le premier jour, ni de record de masse sans rien de pesé', () => {
+  const premier = L.periodStats(statsData({ '2026-09-21': oneEntryDay(2000, 100) }), '2026-09-21');
+  assert.equal(premier.records, null);
+  assert.equal(premier.filled, 1);
+
+  // Des œufs à l'unité sans poids connu : il y a des calories, mais aucune masse.
+  const oeufs = L.emptyDay();
+  oeufs.petitdej.push({ foodId: 'f-oeuf', name: 'Œuf', unit: 'piece', grams: 3, kcal100: 72, prot100: 6.3 });
+  const r = L.periodStats(statsData({ '2026-09-21': oeufs }), '2026-09-22').records;
+  assert.equal(r.maxKcal.value, 216);
+  assert.equal(r.maxGrams, null);
+});
+
+test('stats : objectifs atteints, comparés aux valeurs affichées', () => {
+  const days = {
+    '2026-09-21': oneEntryDay(3199.6, 179.96), // s'affiche 3 200 kcal et 180,0 g : atteint
+    '2026-09-22': oneEntryDay(3100, 185),
+    // 23/09 non saisi : manqué
+    '2026-09-24': oneEntryDay(9999, 999), // jour en cours : pas encore jugé
+  };
+  const st = L.periodStats(statsData(days, { goalKcal: 3200, goalProt: 180 }), '2026-09-24');
+  assert.deepEqual(st.goals.kcal, { goal: 3200, hit: 1, of: 3 });
+  assert.deepEqual(st.goals.prot, { goal: 180, hit: 2, of: 3 });
+
+  const sans = L.periodStats(statsData(days), '2026-09-24');
+  assert.equal(sans.goals.kcal, null);
+  assert.equal(sans.goals.prot, null);
+});
+
+test('stats : semaines du lundi au dimanche, rognées à la période', () => {
+  // Période du mercredi 16/09 au mercredi 30/09, vue le mardi 29/09.
+  const days = {};
+  for (let i = 0; i < 14; i++) days[L.addDays('2026-09-16', i)] = oneEntryDay(1000, 50);
+  const data = statsData(days, { startDate: '2026-09-16', endDate: '2026-09-30' });
+  const weeks = L.periodStats(data, '2026-09-29').weeks;
+
+  assert.deepEqual(
+    weeks.map((w) => [w.from, w.to, w.days, w.current]),
+    [
+      ['2026-09-16', '2026-09-20', 5, false], // du mercredi au dimanche
+      ['2026-09-21', '2026-09-27', 7, false],
+      ['2026-09-28', '2026-09-29', 2, true], // semaine en cours, jusqu'à aujourd'hui
+    ]
+  );
+  assert.equal(Math.round(weeks[1].kcal), 7000);
+  assert.equal(Math.round(weeks[1].prot), 350);
+  assert.equal(weeks[1].grams, 700);
+
+  // Une fois la période passée, plus rien n'est « en cours ».
+  const apres = L.periodStats(data, '2026-11-01').weeks;
+  assert.equal(apres[apres.length - 1].to, '2026-09-30');
+  assert.ok(apres.every((w) => !w.current));
+});
+
+test('stats : répartition des calories entre les repas', () => {
+  const day = L.emptyDay();
+  day.petitdej.push({ unit: 'g', grams: 100, kcal100: 500, prot100: 20 });
+  day.soir.push({ unit: 'g', grams: 100, kcal100: 1500, prot100: 60 });
+  const meals = L.periodStats(statsData({ '2026-09-21': day }), '2026-09-21').meals;
+
+  assert.deepEqual(
+    meals.map((m) => m.key),
+    ['petitdej', 'midi', 'gouter', 'soir', 'grignotage']
+  );
+  assert.equal(meals[0].share, 0.25);
+  assert.equal(meals[3].share, 0.75);
+  assert.equal(meals[1].share, 0);
+  assert.equal(
+    meals.reduce((s, m) => s + m.share, 0),
+    1
+  );
+});
+
+test('stats : aliments regroupés, sous leur nom actuel, classés par calories', () => {
+  const d1 = oneEntryDay(700, 24, { foodId: 'f-pates', name: 'Pâtes', grams: 200 });
+  d1.soir.push({ foodId: 'f-riz', name: 'Riz', unit: 'g', grams: 100, kcal100: 355, prot100: 7.5 });
+  const d2 = oneEntryDay(1050, 36, { foodId: 'f-pates', name: 'Pâtes', grams: 300 });
+  d2.gouter.push({ foodId: null, name: 'Banane', unit: 'g', grams: 120, kcal100: 89, prot100: 1.1 });
+  d2.gouter.push({ foodId: null, name: 'banane', unit: 'g', grams: 120, kcal100: 89, prot100: 1.1 });
+
+  const data = statsData({ '2026-09-21': d1, '2026-09-22': d2 });
+  data.foods = [{ id: 'f-pates', name: 'Pâtes complètes', unit: 'g', kcal100: 350, prot100: 12 }];
+  const foods = L.periodStats(data, '2026-09-22').foods;
+
+  assert.deepEqual(
+    foods.map((f) => [f.name, f.count, Math.round(f.kcal)]),
+    [
+      ['Pâtes complètes', 2, 1750], // renommé depuis : on affiche le nom actuel
+      ['Riz', 1, 355],
+      ['Banane', 2, 214], // sans lien vers la base : regroupé par nom, casse ignorée
+    ]
+  );
+  assert.equal(foods[0].grams, 500);
+
+  // La liste est limitée.
+  assert.equal(L.periodStats(data, '2026-09-22', { topFoods: 1 }).foods.length, 1);
+});

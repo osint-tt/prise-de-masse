@@ -20,6 +20,11 @@ aliment à l'unité sont données par unité et non pour 100 g.
 Sous le graphique, une ligne en tout petit récapitule les calories, les protéines et les
 kilos avalés sur les **7 derniers jours**, jour en cours compris.
 
+**Paramètres → Statistiques** rassemble le bilan depuis le début, les records (journée la
+plus et la moins calorique, la plus riche en protéines, le plus gros repas…), les objectifs
+atteints, les sommes par semaine du lundi au dimanche, la répartition des calories entre
+les repas et les aliments qui en apportent le plus.
+
 Le graphique démarre toujours à 2 500 kcal / 60 g plutôt qu'à zéro, pour que les écarts entre
 journées restent lisibles (constantes `CHART_FLOORS` dans `js/logic.js`). Une journée sous ce
 seuil garde une petite amorce sur la ligne du bas ; son total exact reste lisible au tap.

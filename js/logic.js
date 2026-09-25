@@ -1,7 +1,7 @@
 // logic.js — logique pure : calculs, dates, parsing, validation.
 // Aucun accès au DOM ni au stockage : ce fichier est importable par Node pour les tests.
 
-export const APP_VERSION = '1.5.0';
+export const APP_VERSION = '1.6.0';
 
 export const SCHEMA_VERSION = 2;
 
@@ -447,6 +447,184 @@ export function periodSeries(days, startKey, endKey) {
     const t = dayTotals(days ? days[key] : null);
     return { key, kcal: t.kcal, prot: t.prot, empty: dayIsEmpty(days ? days[key] : null) };
   });
+}
+
+/* ------------------------------------------------------------------ */
+/* Statistiques                                                        */
+/* ------------------------------------------------------------------ */
+
+/** « 21 – 27 sept. », « 28 sept. – 4 oct. », « 21 sept. » */
+export function formatDayRange(from, to) {
+  const a = parseDateKey(from);
+  const b = parseDateKey(to);
+  if (!a || !b) return '';
+  if (from === to) return formatMediumDate(from);
+  if (a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth()) {
+    return `${a.getDate()} – ${formatMediumDate(to)}`;
+  }
+  return `${formatMediumDate(from)} – ${formatMediumDate(to)}`;
+}
+
+/**
+ * Statistiques globales de la période, de son début à aujourd'hui.
+ *
+ * Deux règles, reprises de l'accueil :
+ * - les cumuls (bilan, semaines, repas, aliments) comptent le jour en cours,
+ *   comme la note des 7 derniers jours ;
+ * - les records et les objectifs ne portent que sur les journées terminées,
+ *   comme la moyenne : une journée à moitié saisie serait toujours « la moins
+ *   calorique ». Les records ignorent en plus les journées vides, qui ne sont
+ *   pas des journées légères mais des journées non saisies.
+ * À égalité, un record revient à la première journée qui l'a atteint.
+ *
+ * @returns {Object|null} null avant le début de la période.
+ */
+export function periodStats(data, today, { topFoods = 5 } = {}) {
+  const s = data && data.settings;
+  if (!s || !isDateKey(today)) return null;
+  const length = periodLength(s.startDate, s.endDate);
+  if (length === 0 || today < s.startDate) return null;
+
+  const days = (data && data.days) || {};
+  const foods = Array.isArray(data.foods) ? data.foods : [];
+  const over = today > s.endDate;
+  const last = over ? s.endDate : today;
+
+  const perDay = periodDays(s.startDate, last).map((key) => {
+    const day = days[key] || null;
+    const t = dayTotals(day);
+    return {
+      key,
+      day,
+      kcal: t.kcal,
+      prot: t.prot,
+      grams: dayGrams(day, foods),
+      empty: dayIsEmpty(day),
+      finished: over || key < today,
+    };
+  });
+
+  // Bilan depuis le début.
+  const totals = { kcal: 0, prot: 0, grams: 0 };
+  let filled = 0;
+  for (const d of perDay) {
+    totals.kcal += d.kcal;
+    totals.prot += d.prot;
+    totals.grams += d.grams;
+    if (!d.empty) filled += 1;
+  }
+
+  // Records : journées terminées et remplies.
+  const done = perDay.filter((d) => d.finished && !d.empty);
+  const best = (list, value, better) =>
+    list.reduce((acc, d) => (acc === null || better(value(d), value(acc)) ? d : acc), null);
+  const asRecord = (d, value) => (d ? { key: d.key, value: value(d) } : null);
+  const plus = (a, b) => a > b;
+  const moins = (a, b) => a < b;
+
+  let records = null;
+  if (done.length > 0) {
+    let meal = null;
+    for (const d of done) {
+      for (const m of MEALS) {
+        const kcal = mealTotals(d.day, m.key).kcal;
+        if (kcal > 0 && (meal === null || kcal > meal.value)) {
+          meal = { key: d.key, meal: m.key, label: m.label, value: kcal };
+        }
+      }
+    }
+    const weighed = done.filter((d) => d.grams > 0);
+    records = {
+      maxKcal: asRecord(best(done, (d) => d.kcal, plus), (d) => d.kcal),
+      minKcal: asRecord(best(done, (d) => d.kcal, moins), (d) => d.kcal),
+      maxProt: asRecord(best(done, (d) => d.prot, plus), (d) => d.prot),
+      minProt: asRecord(best(done, (d) => d.prot, moins), (d) => d.prot),
+      maxGrams: asRecord(best(weighed, (d) => d.grams, plus), (d) => d.grams),
+      biggestMeal: meal,
+    };
+  }
+
+  // Objectifs : sur les journées terminées, vides comprises (une journée non
+  // saisie n'a pas atteint l'objectif). Comparés aux valeurs affichées, arrondies.
+  const finished = perDay.filter((d) => d.finished);
+  const goalCount = (goal, value) =>
+    goal ? { goal, hit: finished.filter((d) => value(d) >= goal).length, of: finished.length } : null;
+  const goals = {
+    kcal: goalCount(s.goalKcal, (d) => Math.round(d.kcal)),
+    prot: goalCount(s.goalProt, (d) => round1(d.prot)),
+  };
+
+  // Semaines du lundi au dimanche, rognées aux bornes de la période.
+  const weeks = [];
+  for (const d of perDay) {
+    const monday = addDays(d.key, -weekdayMonday(d.key));
+    let w = weeks[weeks.length - 1];
+    if (!w || w.monday !== monday) {
+      w = { monday, from: d.key, to: d.key, days: 0, filled: 0, kcal: 0, prot: 0, grams: 0 };
+      weeks.push(w);
+    }
+    w.to = d.key;
+    w.days += 1;
+    if (!d.empty) w.filled += 1;
+    w.kcal += d.kcal;
+    w.prot += d.prot;
+    w.grams += d.grams;
+  }
+  for (const w of weeks) {
+    w.current = !over && w.from <= today && today <= w.to;
+  }
+
+  // Répartition des calories entre les repas.
+  const meals = MEALS.map((m) => {
+    let kcal = 0;
+    let prot = 0;
+    for (const d of perDay) {
+      const t = mealTotals(d.day, m.key);
+      kcal += t.kcal;
+      prot += t.prot;
+    }
+    return { key: m.key, label: m.label, kcal, prot, share: totals.kcal > 0 ? kcal / totals.kcal : 0 };
+  });
+
+  // Aliments qui apportent le plus de calories. Regroupés par aliment de la base,
+  // sous son nom actuel ; par nom pour une entrée sans lien vers la base.
+  const byFood = new Map();
+  for (const d of perDay) {
+    for (const k of MEAL_KEYS) {
+      const list = d.day && Array.isArray(d.day[k]) ? d.day[k] : [];
+      for (const e of list) {
+        const id = e.foodId ? `id:${e.foodId}` : `nom:${fold(e.name)}`;
+        let f = byFood.get(id);
+        if (!f) {
+          const known = e.foodId ? foods.find((x) => x && x.id === e.foodId) : null;
+          f = { name: known ? known.name : e.name, kcal: 0, prot: 0, grams: 0, count: 0 };
+          byFood.set(id, f);
+        }
+        f.kcal += entryKcal(e);
+        f.prot += entryProt(e);
+        f.grams += entryGrams(e, foods);
+        f.count += 1;
+      }
+    }
+  }
+  const top = [...byFood.values()]
+    .sort((a, b) => b.kcal - a.kcal || collator.compare(a.name, b.name))
+    .slice(0, Math.max(0, topFoods));
+
+  return {
+    from: s.startDate,
+    to: last,
+    length,
+    elapsed: perDay.length,
+    finished: finished.length,
+    filled,
+    totals,
+    records,
+    goals,
+    weeks,
+    meals,
+    foods: top,
+  };
 }
 
 /* ------------------------------------------------------------------ */

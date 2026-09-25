@@ -342,7 +342,7 @@ test.describe('Autonomie', () => {
   });
 
   test('aucun défilement horizontal à 360 px et à 430 px', async ({ page }) => {
-    const routes = ['#/', '#/jour/2026-09-21', '#/parametres', '#/aliments'];
+    const routes = ['#/', '#/jour/2026-09-21', '#/parametres', '#/aliments', '#/statistiques'];
     for (const width of [360, 430]) {
       await page.setViewportSize({ width, height: 844 });
       await open(page, sampleData());

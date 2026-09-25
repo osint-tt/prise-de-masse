@@ -105,6 +105,20 @@ for (const theme of ['light', 'dark']) {
     await page.fill('#foods-search', 'poul');
     await shot('aliments-recherche');
 
+    // Statistiques : haut, milieu et bas de l'écran
+    await page.goto('/#/statistiques');
+    await shot('statistiques');
+    await page.evaluate(() => {
+      const main = document.querySelector('[data-scroll]');
+      main.scrollTop = main.scrollHeight / 2 - main.clientHeight / 2;
+    });
+    await shot('statistiques-milieu');
+    await page.evaluate(() => {
+      const main = document.querySelector('[data-scroll]');
+      main.scrollTop = main.scrollHeight;
+    });
+    await shot('statistiques-bas');
+
     // Feuille d'import : résumé et erreur
     await page.evaluate(() => {
       const input = document.querySelector('#import-file');

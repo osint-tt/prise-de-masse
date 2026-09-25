@@ -339,3 +339,105 @@ test.describe('Navigation', () => {
     expect(await text(page.locator('.today-card'))).toContain('1 050');
   });
 });
+
+test.describe('Statistiques', () => {
+  // Vendredi 25/09 = jour 5 : 4 journées terminées, la 5e en cours.
+  const JOUR_5 = new Date('2026-09-25T09:00:00+02:00');
+
+  test('les paramètres mènent aux statistiques, et le retour y ramène', async ({ page }) => {
+    await open(page, sampleData(), { hash: '#/parametres', time: JOUR_5 });
+    await page.click('[data-action="stats"]');
+    await expect(page).toHaveURL(/#\/statistiques$/);
+    await expect(page.locator('.app-header h1')).toHaveText('Statistiques');
+    await expect(page.locator('.app-header .sub')).toHaveText('Jour 5 / 31');
+
+    await page.click('[data-action="back-settings"]');
+    await expect(page).toHaveURL(/#\/parametres$/);
+  });
+
+  test('bilan et records correspondent au calcul, et un record ouvre sa journée', async ({ page }) => {
+    const data = sampleData();
+    await open(page, data, { hash: '#/statistiques', time: JOUR_5 });
+    const st = L.periodStats(data, '2026-09-25');
+
+    const bilan = await text(page.locator('[data-stats="bilan"]'));
+    expect(bilan).toContain(norm(L.formatInt(st.totals.kcal)));
+    expect(bilan).toContain(norm(L.formatKg(st.totals.grams).replace(' kg', '')));
+    expect(bilan).toContain('5 jours remplis sur 5');
+
+    const records = page.locator('[data-stats="records"] .stat-row');
+    await expect(records).toHaveCount(6);
+    const attendus = [
+      ['Le plus de calories', L.formatKcal(st.records.maxKcal.value), st.records.maxKcal.key],
+      ['Le moins de calories', L.formatKcal(st.records.minKcal.value), st.records.minKcal.key],
+      ['Le plus de protéines', L.formatProt(st.records.maxProt.value), st.records.maxProt.key],
+      ['Le moins de protéines', L.formatProt(st.records.minProt.value), st.records.minProt.key],
+      ['Le plus de nourriture', L.formatKg(st.records.maxGrams.value), st.records.maxGrams.key],
+      ['Le plus gros repas', L.formatKcal(st.records.biggestMeal.value), st.records.biggestMeal.key],
+    ];
+    for (const [i, [titre, valeur, jour]] of attendus.entries()) {
+      const ligne = await text(records.nth(i));
+      expect(ligne).toContain(titre);
+      expect(ligne).toContain(norm(valeur));
+      expect(ligne).toContain(L.formatLongDate(jour));
+    }
+    // Le jour en cours n'entre dans aucun record.
+    expect(attendus.every(([, , jour]) => jour < '2026-09-25')).toBe(true);
+
+    await records.first().click();
+    await expect(page).toHaveURL(new RegExp(`#/jour/${st.records.maxKcal.key}$`));
+  });
+
+  test('objectifs, semaines, repas et aliments', async ({ page }) => {
+    const data = sampleData();
+    await page.setViewportSize({ width: 360, height: 780 });
+    await open(page, data, { hash: '#/statistiques', time: JOUR_5 });
+    const st = L.periodStats(data, '2026-09-25');
+
+    const objectifs = await text(page.locator('[data-stats="objectifs"]'));
+    expect(objectifs).toContain(`${st.goals.kcal.hit} / 4 jours`);
+    expect(objectifs).toContain(`${st.goals.prot.hit} / 4 jours`);
+
+    const semaines = page.locator('[data-stats="semaines"] .stat-row');
+    await expect(semaines).toHaveCount(1);
+    const semaine = await text(semaines.first());
+    expect(semaine).toContain('21 – 25 sept.');
+    expect(semaine).toContain('En cours');
+    expect(semaine).toContain(norm(L.formatKcal(st.weeks[0].kcal)));
+
+    await expect(page.locator('[data-stats="repas"] .progress-row')).toHaveCount(5);
+    expect(await text(page.locator('[data-stats="repas"]'))).toContain('Repas soir');
+
+    const aliments = page.locator('[data-stats="aliments"] .stat-row');
+    await expect(aliments).toHaveCount(5);
+    expect(await text(aliments.first())).toContain(st.foods[0].name);
+
+    // Rien ne déborde, même à 360 px.
+    const debord = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+    );
+    expect(debord).toBeLessThanOrEqual(0);
+  });
+
+  test('sans données, un message à la place des statistiques', async ({ page }) => {
+    await open(page, emptyData(), { hash: '#/statistiques' });
+    await expect(page.locator('.empty-state')).toContainText('Aucune donnée');
+    await expect(page.locator('[data-stats]')).toHaveCount(0);
+  });
+
+  test('au premier jour, les records attendent demain', async ({ page }) => {
+    await open(page, sampleData(), { hash: '#/statistiques' }); // 21/09 = jour 1
+    await expect(page.locator('[data-stats="bilan"]')).toBeVisible();
+    await expect(page.locator('[data-stats="records"]')).toContainText('apparaîtront demain');
+    await expect(page.locator('[data-stats="records"] .stat-row')).toHaveCount(0);
+    // Aucun objectif ne se juge sur une journée pas encore terminée.
+    await expect(page.locator('[data-stats="objectifs"]')).toHaveCount(0);
+  });
+
+  test('avant le début de la période, rien à afficher', async ({ page }) => {
+    const data = sampleData();
+    data.settings.startDate = '2026-10-01';
+    await open(page, data, { hash: '#/statistiques' });
+    await expect(page.locator('.empty-state')).toContainText('pas encore commencé');
+  });
+});

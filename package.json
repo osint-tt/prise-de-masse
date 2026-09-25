@@ -1,6 +1,6 @@
 {
   "name": "prise-de-masse",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "private": true,
   "type": "module",
   "description": "PWA de suivi des calories et des protéines pendant une prise de masse. Outils de developpement uniquement : l'app elle-meme n'a aucune dependance.",
