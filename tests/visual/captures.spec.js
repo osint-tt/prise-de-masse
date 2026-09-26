@@ -68,6 +68,12 @@ for (const theme of ['light', 'dark']) {
     await page.click('.sheet .food-row:has-text("Pâtes")');
     await page.fill('.sheet #q-grams', '300');
     await shot('feuille-ajouter-quantite');
+    await page.click('.sheet [aria-label="Étape précédente"]');
+    await page.click('.sheet [data-free-entry]');
+    await page.fill('.sheet #free-name', 'Raclette');
+    await page.fill('.sheet #free-kcal', '1250');
+    await page.fill('.sheet #free-prot', '45,5');
+    await shot('feuille-saisie-libre');
     await page.keyboard.press('Escape');
 
     // Feuille « Modifier » une entrée

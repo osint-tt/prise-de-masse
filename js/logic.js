@@ -1,7 +1,7 @@
 // logic.js — logique pure : calculs, dates, parsing, validation.
 // Aucun accès au DOM ni au stockage : ce fichier est importable par Node pour les tests.
 
-export const APP_VERSION = '1.6.0';
+export const APP_VERSION = '1.7.0';
 
 export const SCHEMA_VERSION = 2;
 
@@ -38,7 +38,13 @@ export const LIMITS = {
   protUnitMax: 200,
   piecesMax: 100,
   unitGramsMax: 2000,
+  // Saisie libre : un plat entier (raclette, menu du resto), pas 100 g ni une unité.
+  freeKcalMax: 5000,
+  freeProtMax: 400,
 };
+
+/** Nom d'une saisie libre laissée sans nom. */
+export const FREE_ENTRY_NAME = 'Plat';
 
 /** Quantité à laquelle se rapportent kcal100 / prot100 : 100 g, ou 1 unité. */
 export function refQuantity(unit) {
@@ -277,6 +283,13 @@ export function formatQuantity(n, unit) {
   const value = n || 0;
   if (normalizeUnit(unit) !== 'piece') return formatGrams(value);
   return `${nfUpTo1.format(value)} ${value > 1 ? 'unités' : 'unité'}`;
+}
+
+/** Seconde ligne d'une entrée dans la journée : sa quantité, ou « Saisie libre ». */
+export function entryQuantityLabel(entry) {
+  if (!entry) return '';
+  if (entry.free) return 'Saisie libre';
+  return formatQuantity(entry.grams, entry.unit);
 }
 
 /** Suffixe des valeurs de référence : « / 100 g » ou « / unité ». */
@@ -755,6 +768,54 @@ export function cleanUnitGrams(value, unit) {
   return n;
 }
 
+/**
+ * Saisie libre : un plat mangé trop rarement pour mériter une fiche d'aliment.
+ * On donne directement ses calories et ses protéines ; le nom est facultatif.
+ * @returns {{ok:boolean, errors:Object, value?:{name:string, kcal:number, prot:number}}}
+ */
+export function validateFreeEntry(input) {
+  const errors = {};
+  const name = normalizeName(input && input.name);
+  if (name.length > LIMITS.nameMax) errors.name = `${LIMITS.nameMax} caractères maximum.`;
+
+  const kcal = parseNumber(input && input.kcal);
+  if (kcal === null) {
+    errors.kcal = 'Indique les calories du plat.';
+  } else if (kcal < 0 || kcal > LIMITS.freeKcalMax) {
+    errors.kcal = `Entre 0 et ${formatInt(LIMITS.freeKcalMax)} kcal.`;
+  }
+
+  const prot = parseNumber(input && input.prot);
+  if (prot === null) {
+    errors.prot = 'Indique les protéines du plat.';
+  } else if (prot < 0 || prot > LIMITS.freeProtMax) {
+    errors.prot = `Entre 0 et ${formatInt(LIMITS.freeProtMax)} g.`;
+  }
+
+  if (!errors.kcal && !errors.prot && kcal === 0 && prot === 0) {
+    errors.kcal = 'Un plat à 0 kcal et 0 g de protéines ne compte pour rien.';
+  }
+
+  const ok = Object.keys(errors).length === 0;
+  return ok ? { ok, errors, value: { name: name || FREE_ENTRY_NAME, kcal, prot } } : { ok, errors };
+}
+
+/** Entrée d'une saisie libre, prête à ranger dans une journée. */
+export function freeEntry({ name, kcal, prot }, now = new Date()) {
+  return {
+    id: newId(),
+    foodId: null,
+    name,
+    unit: 'piece',
+    grams: 1,
+    kcal100: kcal,
+    prot100: prot,
+    unitGrams: null,
+    createdAt: now.toISOString(),
+    free: true,
+  };
+}
+
 /** Quantité : > 0, et bornée selon l'unité (5 000 g, ou 100 unités). */
 export function validateQuantity(input, unit) {
   const value = parseNumber(input);
@@ -824,8 +885,10 @@ function isPlainObject(v) {
 
 function cleanEntry(raw) {
   if (!isPlainObject(raw)) return null;
-  const unit = normalizeUnit(raw.unit);
-  const max = valueLimits(unit);
+  // Saisie libre : une « unité » unique qui porte directement les kcal et les protéines.
+  const free = raw.free === true;
+  const unit = free ? 'piece' : normalizeUnit(raw.unit);
+  const max = free ? { kcal: LIMITS.freeKcalMax, prot: LIMITS.freeProtMax } : valueLimits(unit);
   const grams = parseNumber(raw.grams);
   const kcal100 = parseNumber(raw.kcal100);
   const prot100 = parseNumber(raw.prot100);
@@ -842,8 +905,9 @@ function cleanEntry(raw) {
     grams,
     kcal100,
     prot100,
-    unitGrams: cleanUnitGrams(raw.unitGrams, unit),
+    unitGrams: free ? null : cleanUnitGrams(raw.unitGrams, unit),
     createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : new Date().toISOString(),
+    ...(free ? { free: true } : {}),
   };
 }
 

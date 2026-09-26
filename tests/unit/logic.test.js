@@ -963,3 +963,70 @@ test('stats : aliments regroupés, sous leur nom actuel, classés par calories',
   // La liste est limitée.
   assert.equal(L.periodStats(data, '2026-09-22', { topFoods: 1 }).foods.length, 1);
 });
+
+/* ------------------------------------------------------------------ */
+/* Saisie libre                                                        */
+/* ------------------------------------------------------------------ */
+
+test('saisie libre : kcal et protéines directement, nom facultatif', () => {
+  const res = L.validateFreeEntry({ name: '  Raclette   chez Léa ', kcal: '1250', prot: '45,5' });
+  assert.equal(res.ok, true);
+  assert.deepEqual(res.value, { name: 'Raclette chez Léa', kcal: 1250, prot: 45.5 });
+
+  // Sans nom, le plat s'appelle « Plat ».
+  assert.equal(L.validateFreeEntry({ name: '', kcal: '500', prot: '20' }).value.name, L.FREE_ENTRY_NAME);
+  assert.equal(L.FREE_ENTRY_NAME, 'Plat');
+
+  // Des protéines sans calories (ou l'inverse) sont acceptées.
+  assert.equal(L.validateFreeEntry({ kcal: '0', prot: '25' }).ok, true);
+  assert.equal(L.validateFreeEntry({ kcal: '300', prot: '0' }).ok, true);
+});
+
+test('saisie libre : champs obligatoires et bornes', () => {
+  assert.match(L.validateFreeEntry({ kcal: '', prot: '20' }).errors.kcal, /calories/);
+  assert.match(L.validateFreeEntry({ kcal: '500', prot: '' }).errors.prot, /protéines/);
+  assert.match(L.validateFreeEntry({ kcal: 'beaucoup', prot: '20' }).errors.kcal, /calories/);
+  assert.match(L.validateFreeEntry({ kcal: '6000', prot: '20' }).errors.kcal, /5\s000/);
+  assert.match(L.validateFreeEntry({ kcal: '500', prot: '500' }).errors.prot, /400/);
+  assert.equal(L.validateFreeEntry({ kcal: '-1', prot: '20' }).ok, false);
+  assert.match(L.validateFreeEntry({ kcal: '0', prot: '0' }).errors.kcal, /rien/);
+  assert.match(L.validateFreeEntry({ name: 'x'.repeat(41), kcal: '1', prot: '1' }).errors.name, /40/);
+  // Un plat entier peut dépasser les 2 000 kcal d'une unité.
+  assert.equal(L.validateFreeEntry({ kcal: '4800', prot: '150' }).ok, true);
+});
+
+test('saisie libre : l’entrée compte comme les autres, sans poids ni quantité', () => {
+  const e = L.freeEntry({ name: 'Raclette', kcal: 1250, prot: 45.5 }, new Date('2026-09-26T20:00:00Z'));
+  assert.equal(e.free, true);
+  assert.equal(e.foodId, null);
+  assert.equal(e.createdAt, '2026-09-26T20:00:00.000Z');
+  assert.equal(L.entryKcal(e), 1250);
+  assert.equal(L.entryProt(e), 45.5);
+  assert.equal(L.entryGrams(e), 0);
+  assert.equal(L.entryQuantityLabel(e), 'Saisie libre');
+  assert.equal(L.entryQuantityLabel({ unit: 'g', grams: 300 }), '300 g');
+
+  const day = L.emptyDay();
+  day.soir.push(e);
+  day.soir.push({ unit: 'g', grams: 100, kcal100: 350, prot100: 12 });
+  assert.deepEqual(L.dayTotals(day), { kcal: 1600, prot: 57.5 });
+});
+
+test('saisie libre : conservée à l’import, bornes du plat entier', () => {
+  const file = validFile();
+  const libre = L.freeEntry({ name: 'Menu du resto', kcal: 2800, prot: 90 });
+  file.days['2026-09-21'].soir = [libre];
+  const res = L.validateData(file);
+  assert.equal(res.ok, true);
+  const relue = res.data.days['2026-09-21'].soir[0];
+  assert.equal(relue.free, true);
+  assert.equal(relue.kcal100, 2800);
+  assert.equal(relue.unitGrams, null);
+
+  // Les entrées ordinaires ne gagnent pas de champ « free ».
+  assert.equal('free' in res.data.days['2026-09-21'].midi[0], false);
+
+  // Au-delà des bornes d'un plat entier, le fichier est refusé.
+  file.days['2026-09-21'].soir = [{ ...libre, kcal100: 9000 }];
+  assert.equal(L.validateData(file).ok, false);
+});

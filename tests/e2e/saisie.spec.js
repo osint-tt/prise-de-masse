@@ -377,6 +377,104 @@ test.describe('Aliments à l’unité', () => {
   });
 });
 
+test.describe('Saisie libre', () => {
+  test('des kcal et des protéines directement, sans rien ajouter à la base', async ({ page }) => {
+    await open(page, sampleData(), { hash: '#/jour/2026-09-21' });
+    const avant = L.dayTotals(sampleData().days['2026-09-21']);
+
+    await page.click('section.meal[data-meal="soir"] .add-btn');
+    await page.waitForSelector('.sheet #picker-search');
+    await expect(page.locator('.sheet [data-free-entry]')).toHaveText('Saisie libre');
+    await page.click('.sheet [data-free-entry]');
+
+    // On tombe directement sur les calories : le nom est facultatif.
+    await expect(page.locator('.sheet .sheet-head h2')).toHaveText('Saisie libre');
+    await expect(page.locator('.sheet #free-kcal')).toBeFocused();
+    await page.fill('.sheet #free-name', 'Raclette');
+    await page.fill('.sheet #free-kcal', '1250');
+    await page.fill('.sheet #free-prot', '45,5');
+    await page.click('.sheet [data-submit]');
+    await page.waitForSelector('.sheet', { state: 'detached' });
+
+    const ligne = page.locator('section.meal[data-meal="soir"] .entry:has-text("Raclette")');
+    await expect(ligne).toHaveCount(1);
+    const texte = await text(ligne);
+    expect(texte).toContain('Saisie libre');
+    expect(texte).toContain('1 250 kcal');
+    expect(texte).toContain('45,5 g');
+    expect(await text(page.locator('.day-total .values'))).toContain(
+      norm(L.formatKcal(avant.kcal + 1250))
+    );
+
+    // Rien n'est entré dans la base d'aliments.
+    const data = await storedData(page);
+    expect(data.foods.length).toBe(6);
+    const stockee = data.days['2026-09-21'].soir.find((e) => e.name === 'Raclette');
+    expect(stockee.free).toBe(true);
+    expect(stockee.foodId).toBe(null);
+
+    // Modifier : le même formulaire, pré-rempli.
+    await ligne.click();
+    await expect(page.locator('.sheet #free-kcal')).toHaveValue('1250');
+    await expect(page.locator('.sheet #free-prot')).toHaveValue('45,5');
+    await expect(page.locator('.sheet #free-name')).toHaveValue('Raclette');
+    await page.fill('.sheet #free-kcal', '1400');
+    await page.click('.sheet [data-submit]');
+    await page.waitForSelector('.sheet', { state: 'detached' });
+    expect(await text(ligne)).toContain('1 400 kcal');
+
+    // Supprimer depuis la même feuille.
+    await ligne.click();
+    await page.click('.sheet [data-delete]');
+    await expect(page.locator('.toast')).toContainText('Entrée supprimée');
+    await expect(ligne).toHaveCount(0);
+  });
+
+  test('un nom cherché sans résultat devient le nom du plat ; sans nom, c’est « Plat »', async ({ page }) => {
+    await open(page, sampleData(), { hash: '#/jour/2026-09-21' });
+    await page.click('section.meal[data-meal="midi"] .add-btn');
+    await page.fill('.sheet #picker-search', 'couscous');
+    await expect(page.locator('.sheet [data-new-food]')).toHaveText('Créer « couscous »');
+    await page.click('.sheet [data-free-entry]');
+    await expect(page.locator('.sheet #free-name')).toHaveValue('couscous');
+
+    // La flèche retour revient au sélecteur, recherche conservée.
+    await page.click('.sheet [aria-label="Étape précédente"]');
+    await expect(page.locator('.sheet #picker-search')).toHaveValue('couscous');
+
+    // Sans nom du tout.
+    await page.fill('.sheet #picker-search', '');
+    await page.click('.sheet [data-free-entry]');
+    await expect(page.locator('.sheet #free-name')).toHaveValue('');
+    await page.fill('.sheet #free-kcal', '500');
+    await page.fill('.sheet #free-prot', '20');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('.sheet', { state: 'detached' });
+    const ligne = page.locator('section.meal[data-meal="midi"] .entry').last();
+    expect(await text(ligne)).toMatch(/^Plat Saisie libre 500 kcal 20,0 g$/);
+  });
+
+  test('les erreurs de saisie bloquent l’ajout', async ({ page }) => {
+    await open(page, sampleData(), { hash: '#/jour/2026-09-21' });
+    await page.click('section.meal[data-meal="soir"] .add-btn');
+    await page.click('.sheet [data-free-entry]');
+    await expect(page.locator('.sheet [data-submit]')).toBeDisabled();
+
+    await page.fill('.sheet #free-kcal', '6000');
+    await page.fill('.sheet #free-prot', '20');
+    await expect(page.locator('.sheet [data-error="kcal"]')).toContainText('5 000');
+    await expect(page.locator('.sheet [data-submit]')).toBeDisabled();
+
+    await page.fill('.sheet #free-kcal', '0');
+    await page.fill('.sheet #free-prot', '0');
+    await expect(page.locator('.sheet [data-error="kcal"]')).toContainText('ne compte pour rien');
+    await expect(page.locator('.sheet [data-submit]')).toBeDisabled();
+
+    await page.fill('.sheet #free-kcal', '4800');
+    await expect(page.locator('.sheet [data-submit]')).toBeEnabled();
+  });
+});
+
 test.describe('Base d’aliments', () => {
   test('recherche insensible à la casse et aux accents, et création depuis la recherche', async ({ page }) => {
     await open(page);

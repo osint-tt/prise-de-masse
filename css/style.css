@@ -1444,6 +1444,20 @@ button.stat-row:active {
   overscroll-behavior: contain;
 }
 
+/* « Nouvel aliment » et « Saisie libre », côte à côte sous la liste. */
+.picker-actions .btn {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0 12px;
+}
+
+.btn-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .qty-preview {
   border: 1px solid var(--line);
   border-radius: var(--radius);

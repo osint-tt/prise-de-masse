@@ -427,7 +427,7 @@ function viewDay(key) {
     const rows = entries
       .map(
         (e) => `<li><button class="entry" data-action="edit-entry" data-meal="${esc(meal.key)}" data-entry="${esc(e.id)}">
-            <span class="entry-name"><span class="n">${esc(e.name)}</span><span class="q num">${esc(L.formatQuantity(e.grams, e.unit))}</span></span>
+            <span class="entry-name"><span class="n">${esc(e.name)}</span><span class="q num">${esc(L.entryQuantityLabel(e))}</span></span>
             <span class="entry-values"><span class="k">${esc(L.formatKcal(L.entryKcal(e)))}</span><span class="p">${esc(L.formatProt(L.entryProt(e)))}</span></span>
           </button></li>`
       )
@@ -1162,7 +1162,10 @@ function showFoodPicker(dateKey, mealKey, query) {
         : ''
     }
     <div class="picker-list" data-picker-list></div>
-    <button class="btn ghost" data-new-food type="button"></button>
+    <div class="btn-row picker-actions">
+      <button class="btn ghost" data-new-food type="button"></button>
+      <button class="btn ghost" data-free-entry type="button"><span class="btn-label">Saisie libre</span></button>
+    </div>
   `;
 
   setSheetContent(`Ajouter à ${meal.label}`, html, {
@@ -1170,6 +1173,7 @@ function showFoodPicker(dateKey, mealKey, query) {
       const search = $('#picker-search', body);
       const list = $('[data-picker-list]', body);
       const newBtn = $('[data-new-food]', body);
+      const freeBtn = $('[data-free-entry]', body);
       const counts = L.foodUsageCounts(state.days);
 
       const paint = () => {
@@ -1193,7 +1197,9 @@ function showFoodPicker(dateKey, mealKey, query) {
             .join('');
         }
         const q2 = q.trim();
-        newBtn.textContent = found.length === 0 && q2 ? `Créer « ${q2} »` : 'Nouvel aliment';
+        const label = found.length === 0 && q2 ? `Créer « ${q2} »` : 'Nouvel aliment';
+        newBtn.innerHTML = `<span class="btn-label">${esc(label)}</span>`;
+        // Un nom cherché sans résultat sert aussi de nom à la saisie libre.
         newBtn.dataset.prefill = found.length === 0 && q2 ? q2 : '';
       };
 
@@ -1228,6 +1234,10 @@ function showFoodPicker(dateKey, mealKey, query) {
         });
         currentSheet.onBack = () => showFoodPicker(dateKey, mealKey, back);
         currentSheet.backBtn.hidden = false;
+      });
+      freeBtn.addEventListener('click', () => {
+        const back = search ? search.value : '';
+        showFreeEntryStep(dateKey, mealKey, back, newBtn.dataset.prefill || '');
       });
 
       paint();
@@ -1318,6 +1328,109 @@ function showQuantityStep(dateKey, mealKey, food, backQuery) {
   });
 }
 
+/* Feuille : saisie libre --------------------------------------------- */
+
+function showFreeEntryStep(dateKey, mealKey, backQuery, prefillName) {
+  renderFreeForm({
+    title: 'Saisie libre',
+    name: prefillName,
+    submitLabel: 'Ajouter',
+    onBack: () => showFoodPicker(dateKey, mealKey, backQuery || ''),
+    onSubmit: (value) => {
+      ensureDay(dateKey)[mealKey].push(L.freeEntry(value));
+      persist();
+      closeSheet();
+      render();
+    },
+  });
+}
+
+/**
+ * Formulaire d'une saisie libre : un nom facultatif, et les calories et
+ * protéines du plat entier. Rien n'entre dans la base d'aliments.
+ */
+function renderFreeForm({ title, name = '', kcal = '', prot = '', submitLabel, onSubmit, onBack = null, onDelete = null }) {
+  const html = `
+    <div class="field">
+      <label for="free-name">Nom <span class="opt">facultatif</span></label>
+      <input class="input" type="text" id="free-name" maxlength="${L.LIMITS.nameMax}" autocomplete="off" value="${esc(name)}" placeholder="Raclette chez des amis">
+      <p class="field-error" data-error="name" hidden></p>
+    </div>
+    <div class="two-cols">
+      <div class="field">
+        <label for="free-kcal">Calories</label>
+        <input class="input num" type="text" inputmode="decimal" id="free-kcal" autocomplete="off" value="${esc(numToInput(kcal))}" placeholder="850">
+        <p class="field-error" data-error="kcal" hidden></p>
+      </div>
+      <div class="field">
+        <label for="free-prot">Protéines (g)</label>
+        <input class="input num" type="text" inputmode="decimal" id="free-prot" autocomplete="off" value="${esc(numToInput(prot))}" placeholder="32">
+        <p class="field-error" data-error="prot" hidden></p>
+      </div>
+    </div>
+    <p class="hint">Pour le plat entier, sans l’ajouter à ta base d’aliments.</p>
+    <button class="btn primary" data-submit type="button">${esc(submitLabel)}</button>
+    ${onDelete ? `<div class="btn-row"><button class="btn ghost" data-delete type="button">${ICONS.trash}Supprimer</button></div>` : ''}
+  `;
+
+  setSheetContent(title, html, {
+    onBack,
+    mount: (body) => {
+      const inputs = {
+        name: $('#free-name', body),
+        kcal: $('#free-kcal', body),
+        prot: $('#free-prot', body),
+      };
+      const submit = $('[data-submit]', body);
+      const touched = { name: false, kcal: false, prot: false };
+
+      const check = () => {
+        const res = L.validateFreeEntry({
+          name: inputs.name.value,
+          kcal: inputs.kcal.value,
+          prot: inputs.prot.value,
+        });
+        for (const field of Object.keys(inputs)) {
+          const el = body.querySelector(`[data-error="${field}"]`);
+          const message = res.errors[field];
+          const shown = Boolean(message && touched[field]);
+          el.textContent = shown ? message : '';
+          el.hidden = !shown;
+          inputs[field].classList.toggle('invalid', shown);
+        }
+        submit.disabled = !res.ok;
+        return res;
+      };
+
+      const submitNow = () => {
+        touched.name = touched.kcal = touched.prot = true;
+        const res = check();
+        if (res.ok) onSubmit(res.value);
+      };
+
+      // Comme partout : erreurs à la frappe et à la validation, pas au simple passage.
+      for (const [field, input] of Object.entries(inputs)) {
+        input.addEventListener('input', () => {
+          touched[field] = true;
+          check();
+        });
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            submitNow();
+          }
+        });
+      }
+      submit.addEventListener('click', submitNow);
+      if (onDelete) $('[data-delete]', body).addEventListener('click', onDelete);
+
+      check();
+      // À l'ajout, on tape d'abord les calories : le nom est facultatif.
+      if (!kcal && kcal !== 0) inputs.kcal.focus();
+    },
+  });
+}
+
 /* Feuille : modifier une entrée -------------------------------------- */
 
 function openEditEntrySheet(dateKey, mealKey, entryId) {
@@ -1325,6 +1438,30 @@ function openEditEntrySheet(dateKey, mealKey, entryId) {
   if (!day) return;
   const entry = (day[mealKey] || []).find((e) => e.id === entryId);
   if (!entry) return;
+
+  if (entry.free) {
+    openSheet('Modifier');
+    renderFreeForm({
+      title: 'Modifier',
+      name: entry.name === L.FREE_ENTRY_NAME ? '' : entry.name,
+      kcal: entry.kcal100,
+      prot: entry.prot100,
+      submitLabel: 'Enregistrer',
+      onSubmit: (value) => {
+        entry.name = value.name;
+        entry.kcal100 = value.kcal;
+        entry.prot100 = value.prot;
+        persist();
+        closeSheet();
+        render();
+      },
+      onDelete: () => {
+        deleteEntry(dateKey, mealKey, entryId);
+        closeSheet();
+      },
+    });
+    return;
+  }
 
   const unit = L.normalizeUnit(entry.unit);
   openSheet('Modifier');
