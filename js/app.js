@@ -1346,10 +1346,21 @@ function showFreeEntryStep(dateKey, mealKey, backQuery, prefillName) {
 }
 
 /**
- * Formulaire d'une saisie libre : un nom facultatif, et les calories et
- * protéines du plat entier. Rien n'entre dans la base d'aliments.
+ * Formulaire d'une saisie libre : un nom facultatif, les calories et protéines
+ * du plat entier, et son poids, facultatif, pour le total en kilos. Rien
+ * n'entre dans la base d'aliments.
  */
-function renderFreeForm({ title, name = '', kcal = '', prot = '', submitLabel, onSubmit, onBack = null, onDelete = null }) {
+function renderFreeForm({
+  title,
+  name = '',
+  kcal = '',
+  prot = '',
+  grams = '',
+  submitLabel,
+  onSubmit,
+  onBack = null,
+  onDelete = null,
+}) {
   const html = `
     <div class="field">
       <label for="free-name">Nom <span class="opt">facultatif</span></label>
@@ -1368,7 +1379,15 @@ function renderFreeForm({ title, name = '', kcal = '', prot = '', submitLabel, o
         <p class="field-error" data-error="prot" hidden></p>
       </div>
     </div>
-    <p class="hint">Pour le plat entier, sans l’ajouter à ta base d’aliments.</p>
+    <div class="field">
+      <label for="free-grams">Poids du plat <span class="opt">facultatif</span></label>
+      <div class="qty-input-wrap small">
+        <input class="input num" type="text" inputmode="decimal" id="free-grams" autocomplete="off" value="${esc(numToInput(grams))}" placeholder="450">
+        <span class="unit">g</span>
+      </div>
+      <p class="field-error" data-error="grams" hidden></p>
+    </div>
+    <p class="hint">Pour le plat entier, sans l’ajouter à ta base d’aliments. Le poids ne sert qu’au total en kilos du jour.</p>
     <button class="btn primary" data-submit type="button">${esc(submitLabel)}</button>
     ${onDelete ? `<div class="btn-row"><button class="btn ghost" data-delete type="button">${ICONS.trash}Supprimer</button></div>` : ''}
   `;
@@ -1380,15 +1399,17 @@ function renderFreeForm({ title, name = '', kcal = '', prot = '', submitLabel, o
         name: $('#free-name', body),
         kcal: $('#free-kcal', body),
         prot: $('#free-prot', body),
+        grams: $('#free-grams', body),
       };
       const submit = $('[data-submit]', body);
-      const touched = { name: false, kcal: false, prot: false };
+      const touched = { name: false, kcal: false, prot: false, grams: false };
 
       const check = () => {
         const res = L.validateFreeEntry({
           name: inputs.name.value,
           kcal: inputs.kcal.value,
           prot: inputs.prot.value,
+          grams: inputs.grams.value,
         });
         for (const field of Object.keys(inputs)) {
           const el = body.querySelector(`[data-error="${field}"]`);
@@ -1403,7 +1424,7 @@ function renderFreeForm({ title, name = '', kcal = '', prot = '', submitLabel, o
       };
 
       const submitNow = () => {
-        touched.name = touched.kcal = touched.prot = true;
+        touched.name = touched.kcal = touched.prot = touched.grams = true;
         const res = check();
         if (res.ok) onSubmit(res.value);
       };
@@ -1446,11 +1467,13 @@ function openEditEntrySheet(dateKey, mealKey, entryId) {
       name: entry.name === L.FREE_ENTRY_NAME ? '' : entry.name,
       kcal: entry.kcal100,
       prot: entry.prot100,
+      grams: entry.unitGrams > 0 ? entry.unitGrams : '',
       submitLabel: 'Enregistrer',
       onSubmit: (value) => {
         entry.name = value.name;
         entry.kcal100 = value.kcal;
         entry.prot100 = value.prot;
+        entry.unitGrams = value.grams;
         persist();
         closeSheet();
         render();

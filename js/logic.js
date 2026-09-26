@@ -1,7 +1,7 @@
 // logic.js — logique pure : calculs, dates, parsing, validation.
 // Aucun accès au DOM ni au stockage : ce fichier est importable par Node pour les tests.
 
-export const APP_VERSION = '1.7.0';
+export const APP_VERSION = '1.7.1';
 
 export const SCHEMA_VERSION = 2;
 
@@ -285,10 +285,12 @@ export function formatQuantity(n, unit) {
   return `${nfUpTo1.format(value)} ${value > 1 ? 'unités' : 'unité'}`;
 }
 
-/** Seconde ligne d'une entrée dans la journée : sa quantité, ou « Saisie libre ». */
+/** Seconde ligne d'une entrée dans la journée : sa quantité, ou « Saisie libre » et son poids. */
 export function entryQuantityLabel(entry) {
   if (!entry) return '';
-  if (entry.free) return 'Saisie libre';
+  if (entry.free) {
+    return entry.unitGrams > 0 ? `Saisie libre · ${formatGrams(entry.unitGrams)}` : 'Saisie libre';
+  }
   return formatQuantity(entry.grams, entry.unit);
 }
 
@@ -770,8 +772,10 @@ export function cleanUnitGrams(value, unit) {
 
 /**
  * Saisie libre : un plat mangé trop rarement pour mériter une fiche d'aliment.
- * On donne directement ses calories et ses protéines ; le nom est facultatif.
- * @returns {{ok:boolean, errors:Object, value?:{name:string, kcal:number, prot:number}}}
+ * On donne directement ses calories et ses protéines ; le nom et le poids sont
+ * facultatifs. Le poids est la seule façon de le compter dans les kilos : sans
+ * valeurs pour 100 g, il ne se déduit de rien.
+ * @returns {{ok:boolean, errors:Object, value?:{name:string, kcal:number, prot:number, grams:number|null}}}
  */
 export function validateFreeEntry(input) {
   const errors = {};
@@ -796,12 +800,26 @@ export function validateFreeEntry(input) {
     errors.kcal = 'Un plat à 0 kcal et 0 g de protéines ne compte pour rien.';
   }
 
+  let grams = null;
+  if (!isBlank(input && input.grams)) {
+    const n = parseNumber(input.grams);
+    if (n === null || n <= 0) {
+      errors.grams = 'Indique un poids, ou laisse vide.';
+    } else if (n > LIMITS.gramsMax) {
+      errors.grams = `${formatInt(LIMITS.gramsMax)} g maximum.`;
+    } else {
+      grams = n;
+    }
+  }
+
   const ok = Object.keys(errors).length === 0;
-  return ok ? { ok, errors, value: { name: name || FREE_ENTRY_NAME, kcal, prot } } : { ok, errors };
+  return ok
+    ? { ok, errors, value: { name: name || FREE_ENTRY_NAME, kcal, prot, grams } }
+    : { ok, errors };
 }
 
 /** Entrée d'une saisie libre, prête à ranger dans une journée. */
-export function freeEntry({ name, kcal, prot }, now = new Date()) {
+export function freeEntry({ name, kcal, prot, grams = null }, now = new Date()) {
   return {
     id: newId(),
     foodId: null,
@@ -810,7 +828,8 @@ export function freeEntry({ name, kcal, prot }, now = new Date()) {
     grams: 1,
     kcal100: kcal,
     prot100: prot,
-    unitGrams: null,
+    // Quantité 1 : le poids « d'une unité » est celui du plat entier.
+    unitGrams: grams > 0 ? grams : null,
     createdAt: now.toISOString(),
     free: true,
   };
@@ -883,6 +902,13 @@ function isPlainObject(v) {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
+/** Poids d'un plat en saisie libre relu depuis une sauvegarde : null s'il est absent ou aberrant. */
+function cleanFreeGrams(value) {
+  if (isBlank(value)) return null;
+  const n = parseNumber(value);
+  return n !== null && n > 0 && n <= LIMITS.gramsMax ? n : null;
+}
+
 function cleanEntry(raw) {
   if (!isPlainObject(raw)) return null;
   // Saisie libre : une « unité » unique qui porte directement les kcal et les protéines.
@@ -905,7 +931,7 @@ function cleanEntry(raw) {
     grams,
     kcal100,
     prot100,
-    unitGrams: free ? null : cleanUnitGrams(raw.unitGrams, unit),
+    unitGrams: free ? cleanFreeGrams(raw.unitGrams) : cleanUnitGrams(raw.unitGrams, unit),
     createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : new Date().toISOString(),
     ...(free ? { free: true } : {}),
   };

@@ -11,7 +11,7 @@ l'extérieur. Elle fonctionne hors connexion une fois ouverte la première fois.
 Les aliments se saisissent pour 100 g, ou **à l'unité** (un œuf, une banane) en cochant
 « Aliment à l'unité » à la création. Pour un plat mangé trop rarement pour mériter
 une fiche, **Saisie libre** (en bas de la feuille d'ajout) prend directement ses calories
-et ses protéines. L'accueil affiche la moyenne par jour depuis le début
+et ses protéines, et son poids si on veut qu'il compte dans les kilos. L'accueil affiche la moyenne par jour depuis le début
 de la période, sur les journées terminées — le jour en cours n'est pas compté.
 
 Le total d'une journée indique aussi, en petit, **la masse avalée en kilos**. Un aliment à

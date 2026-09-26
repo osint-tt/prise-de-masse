@@ -381,6 +381,7 @@ test.describe('Saisie libre', () => {
   test('des kcal et des protéines directement, sans rien ajouter à la base', async ({ page }) => {
     await open(page, sampleData(), { hash: '#/jour/2026-09-21' });
     const avant = L.dayTotals(sampleData().days['2026-09-21']);
+    const kilosAvant = L.dayGrams(sampleData().days['2026-09-21'], sampleData().foods);
 
     await page.click('section.meal[data-meal="soir"] .add-btn');
     await page.waitForSelector('.sheet #picker-search');
@@ -393,17 +394,22 @@ test.describe('Saisie libre', () => {
     await page.fill('.sheet #free-name', 'Raclette');
     await page.fill('.sheet #free-kcal', '1250');
     await page.fill('.sheet #free-prot', '45,5');
+    await page.fill('.sheet #free-grams', '650'); // facultatif : pour les kilos du jour
     await page.click('.sheet [data-submit]');
     await page.waitForSelector('.sheet', { state: 'detached' });
 
     const ligne = page.locator('section.meal[data-meal="soir"] .entry:has-text("Raclette")');
     await expect(ligne).toHaveCount(1);
     const texte = await text(ligne);
-    expect(texte).toContain('Saisie libre');
+    expect(texte).toContain('Saisie libre · 650 g');
     expect(texte).toContain('1 250 kcal');
     expect(texte).toContain('45,5 g');
     expect(await text(page.locator('.day-total .values'))).toContain(
       norm(L.formatKcal(avant.kcal + 1250))
+    );
+    // Le poids du plat entre dans les kilos du jour.
+    expect(await text(page.locator('.day-total [data-total-kg]'))).toBe(
+      norm(L.formatKg(kilosAvant + 650))
     );
 
     // Rien n'est entré dans la base d'aliments.
@@ -412,16 +418,21 @@ test.describe('Saisie libre', () => {
     const stockee = data.days['2026-09-21'].soir.find((e) => e.name === 'Raclette');
     expect(stockee.free).toBe(true);
     expect(stockee.foodId).toBe(null);
+    expect(stockee.unitGrams).toBe(650);
 
     // Modifier : le même formulaire, pré-rempli.
     await ligne.click();
     await expect(page.locator('.sheet #free-kcal')).toHaveValue('1250');
     await expect(page.locator('.sheet #free-prot')).toHaveValue('45,5');
     await expect(page.locator('.sheet #free-name')).toHaveValue('Raclette');
+    await expect(page.locator('.sheet #free-grams')).toHaveValue('650');
     await page.fill('.sheet #free-kcal', '1400');
+    await page.fill('.sheet #free-grams', ''); // poids retiré
     await page.click('.sheet [data-submit]');
     await page.waitForSelector('.sheet', { state: 'detached' });
     expect(await text(ligne)).toContain('1 400 kcal');
+    expect(await text(ligne)).not.toContain('650 g');
+    expect(await text(page.locator('.day-total [data-total-kg]'))).toBe(norm(L.formatKg(kilosAvant)));
 
     // Supprimer depuis la même feuille.
     await ligne.click();
@@ -471,6 +482,15 @@ test.describe('Saisie libre', () => {
     await expect(page.locator('.sheet [data-submit]')).toBeDisabled();
 
     await page.fill('.sheet #free-kcal', '4800');
+    await expect(page.locator('.sheet [data-submit]')).toBeEnabled();
+
+    // Le poids, facultatif, doit rester plausible s'il est donné.
+    await page.fill('.sheet #free-grams', '0');
+    await expect(page.locator('.sheet [data-error="grams"]')).toContainText('poids');
+    await expect(page.locator('.sheet [data-submit]')).toBeDisabled();
+    await page.fill('.sheet #free-grams', '6000');
+    await expect(page.locator('.sheet [data-error="grams"]')).toContainText('maximum');
+    await page.fill('.sheet #free-grams', '');
     await expect(page.locator('.sheet [data-submit]')).toBeEnabled();
   });
 });

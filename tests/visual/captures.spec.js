@@ -73,6 +73,7 @@ for (const theme of ['light', 'dark']) {
     await page.fill('.sheet #free-name', 'Raclette');
     await page.fill('.sheet #free-kcal', '1250');
     await page.fill('.sheet #free-prot', '45,5');
+    await page.fill('.sheet #free-grams', '650');
     await shot('feuille-saisie-libre');
     await page.keyboard.press('Escape');
 

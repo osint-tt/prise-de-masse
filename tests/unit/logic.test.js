@@ -971,7 +971,7 @@ test('stats : aliments regroupés, sous leur nom actuel, classés par calories',
 test('saisie libre : kcal et protéines directement, nom facultatif', () => {
   const res = L.validateFreeEntry({ name: '  Raclette   chez Léa ', kcal: '1250', prot: '45,5' });
   assert.equal(res.ok, true);
-  assert.deepEqual(res.value, { name: 'Raclette chez Léa', kcal: 1250, prot: 45.5 });
+  assert.deepEqual(res.value, { name: 'Raclette chez Léa', kcal: 1250, prot: 45.5, grams: null });
 
   // Sans nom, le plat s'appelle « Plat ».
   assert.equal(L.validateFreeEntry({ name: '', kcal: '500', prot: '20' }).value.name, L.FREE_ENTRY_NAME);
@@ -995,7 +995,21 @@ test('saisie libre : champs obligatoires et bornes', () => {
   assert.equal(L.validateFreeEntry({ kcal: '4800', prot: '150' }).ok, true);
 });
 
-test('saisie libre : l’entrée compte comme les autres, sans poids ni quantité', () => {
+test('saisie libre : poids du plat facultatif, borné comme une quantité', () => {
+  const base = { kcal: '1250', prot: '45' };
+  assert.equal(L.validateFreeEntry(base).value.grams, null);
+  assert.equal(L.validateFreeEntry({ ...base, grams: '' }).value.grams, null);
+  assert.equal(L.validateFreeEntry({ ...base, grams: '650' }).value.grams, 650);
+  assert.equal(L.validateFreeEntry({ ...base, grams: '412,5' }).value.grams, 412.5);
+
+  assert.match(L.validateFreeEntry({ ...base, grams: '0' }).errors.grams, /poids/);
+  assert.match(L.validateFreeEntry({ ...base, grams: 'lourd' }).errors.grams, /poids/);
+  assert.match(L.validateFreeEntry({ ...base, grams: '6000' }).errors.grams, /5\s000 g maximum/);
+  // Un plat de plus de 2 kg passe : ce n'est pas le poids d'une unité.
+  assert.equal(L.validateFreeEntry({ ...base, grams: '2600' }).ok, true);
+});
+
+test('saisie libre : l’entrée compte comme les autres, sans quantité', () => {
   const e = L.freeEntry({ name: 'Raclette', kcal: 1250, prot: 45.5 }, new Date('2026-09-26T20:00:00Z'));
   assert.equal(e.free, true);
   assert.equal(e.foodId, null);
@@ -1010,6 +1024,16 @@ test('saisie libre : l’entrée compte comme les autres, sans poids ni quantit�
   day.soir.push(e);
   day.soir.push({ unit: 'g', grams: 100, kcal100: 350, prot100: 12 });
   assert.deepEqual(L.dayTotals(day), { kcal: 1600, prot: 57.5 });
+  assert.equal(L.dayGrams(day), 100, 'sans poids, le plat ne pèse rien');
+
+  // Avec son poids, le plat entre dans les kilos du jour.
+  const pese = L.freeEntry({ name: 'Raclette', kcal: 1250, prot: 45.5, grams: 650 });
+  assert.equal(pese.unitGrams, 650);
+  assert.equal(L.entryGrams(pese), 650);
+  assert.equal(L.entryQuantityLabel(pese), 'Saisie libre · 650 g');
+  day.soir[0] = pese;
+  assert.equal(L.dayGrams(day), 750);
+  assert.deepEqual(L.dayTotals(day), { kcal: 1600, prot: 57.5 }, 'le poids ne change pas les calories');
 });
 
 test('saisie libre : conservée à l’import, bornes du plat entier', () => {
@@ -1022,6 +1046,10 @@ test('saisie libre : conservée à l’import, bornes du plat entier', () => {
   assert.equal(relue.free, true);
   assert.equal(relue.kcal100, 2800);
   assert.equal(relue.unitGrams, null);
+
+  // Le poids d'un plat est relu avec ses propres bornes (au-delà des 2 kg d'une unité).
+  file.days['2026-09-21'].soir = [L.freeEntry({ name: 'Menu', kcal: 2800, prot: 90, grams: 2600 })];
+  assert.equal(L.validateData(file).data.days['2026-09-21'].soir[0].unitGrams, 2600);
 
   // Les entrées ordinaires ne gagnent pas de champ « free ».
   assert.equal('free' in res.data.days['2026-09-21'].midi[0], false);

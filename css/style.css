@@ -1496,6 +1496,19 @@ button.stat-row:active {
   width: 22px;
 }
 
+/* Variante champ ordinaire, avec son unité à droite (poids d'une saisie libre). */
+.qty-input-wrap.small .input {
+  font-size: 16px;
+  font-weight: 400;
+  min-height: 48px;
+  text-align: left;
+  letter-spacing: 0;
+}
+
+.qty-input-wrap.small .unit {
+  font-size: 16px;
+}
+
 .sheet-note {
   font-size: 13px;
   color: var(--muted);
